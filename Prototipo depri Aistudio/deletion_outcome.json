@@ -1,0 +1,140 @@
+{
+  "deletedAudits": [
+    "AUD-3730",
+    "AUD-9123",
+    "AUD-5460",
+    "AUD-4003",
+    "AUD-3275",
+    "AUD-4651"
+  ],
+  "deletedMovements": [
+    "2J5vAJzmB89rV3UMvUhk",
+    "3Ph7D1ebVZT2vliZhSYJ",
+    "4uyvwhBQxyWe7yTh7sAG",
+    "8sWumhsFi3x5H6iIUcqs",
+    "DW6KKJCocGRtKO044zcP",
+    "EjX5eGTKaO4vPH7ewkQP",
+    "G2Drki0XhC6jF58D32it",
+    "MnR8CJAOG5N7nmMUR8QR",
+    "NQZFGE2EVHMLuulmiJrM",
+    "OsIwRv3BfCsZa3ir12As",
+    "STxWsPk3qH99bYDKfVP1",
+    "Y2sztlR0r3X5BYKLbQzH",
+    "ZLgXB5aP8Hi2VZ7rCaDg",
+    "ZOVJzmv88VzFmsCvj4t0",
+    "bF4MMHs8EvrPiVgYJK3z",
+    "gjqxzUZTQd95iNRZslDU",
+    "nTZzAe8LWpxAd2YCAzIN",
+    "o2nN4gUkrfivfnECwI6a",
+    "pD21pNb0Z9WuW64TF583",
+    "qeDWXy5i1j29v4I9Cts8",
+    "yzMwU83pROX71zqTKCfl"
+  ],
+  "revertedStockProducts": [
+    {
+      "itemId": "X1gDSMM9FrQr8BsZ4rsO",
+      "name": "Agua mineral 2L",
+      "reversionChange": 1
+    },
+    {
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "name": "Acuarius 1.5L",
+      "reversionChange": -2
+    },
+    {
+      "itemId": "tNMhIQ90MWC9TF1h4cVK",
+      "name": "Brahma 1L",
+      "reversionChange": 5
+    },
+    {
+      "itemId": "LDX5MP4Qhr1l2470cUcd",
+      "name": "Soda sifon 2L",
+      "reversionChange": -8
+    },
+    {
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "name": "Acuarius 1.5L",
+      "reversionChange": 2
+    },
+    {
+      "itemId": "KPz8pkwHVWelNYWK0J9K",
+      "name": "Placer 1.5L",
+      "reversionChange": 3
+    },
+    {
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "name": "Acuarius 1.5L",
+      "reversionChange": -2
+    },
+    {
+      "itemId": "ZHycNpXZWvlJHRm0X464",
+      "name": "Cepita 200ml",
+      "reversionChange": 4
+    },
+    {
+      "itemId": "sZvwS3rWnaeAjbaukNSB",
+      "name": "Gaseosa linea coca cola 310cc",
+      "reversionChange": 2
+    },
+    {
+      "itemId": "Rc1F35DeLPxGjUGdwiUN",
+      "name": "Agua mineral 500cc",
+      "reversionChange": -1
+    },
+    {
+      "itemId": "thhrceLNhvZ213rsvEtN",
+      "name": "Powerade 500cc",
+      "reversionChange": 2
+    },
+    {
+      "itemId": "CkSsHNH6ertYDeQexvNR",
+      "name": "Viñas de balbo 1125",
+      "reversionChange": -7
+    },
+    {
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "name": "Acuarius 1.5L",
+      "reversionChange": 2
+    },
+    {
+      "itemId": "ZiXpsF8ZLefNJFmmR4NG",
+      "name": "Placer 500cc",
+      "reversionChange": 3
+    },
+    {
+      "itemId": "X1gDSMM9FrQr8BsZ4rsO",
+      "name": "Agua mineral 2L",
+      "reversionChange": 4
+    },
+    {
+      "itemId": "J5iMErSJyOospf9mj91U",
+      "name": "Canciller tinto 1125",
+      "reversionChange": 1
+    },
+    {
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "name": "Acuarius 1.5L",
+      "reversionChange": 1
+    },
+    {
+      "itemId": "Rc1F35DeLPxGjUGdwiUN",
+      "name": "Agua mineral 500cc",
+      "reversionChange": -5
+    },
+    {
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "name": "Acuarius 1.5L",
+      "reversionChange": -2
+    },
+    {
+      "itemId": "qCz7to6ccLmsMAJUMfGe",
+      "name": "Iguana 1L",
+      "reversionChange": 3
+    },
+    {
+      "itemId": "soGZHRB1Ugy7KORXICFK",
+      "name": "Gaseosa linea coca cola 1250",
+      "reversionChange": 1
+    }
+  ]
+}

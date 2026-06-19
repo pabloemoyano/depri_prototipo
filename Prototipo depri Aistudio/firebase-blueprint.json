@@ -1,0 +1,210 @@
+{
+  "entities": {
+    "StockItem": {
+      "title": "StockItem",
+      "description": "An item in the bar inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "min_quantity": { "type": "number" },
+        "purchase_price": { "type": "number" },
+        "selling_price": { "type": "number" },
+        "image_url": { "type": "string" },
+        "last_updated": { "type": "string" },
+        "subgroup": { "type": "string" },
+        "sku": { "type": "string" },
+        "is_active": { "type": "boolean" }
+      },
+      "required": ["id", "ownerId", "name", "category", "quantity", "min_quantity", "purchase_price", "selling_price", "last_updated"]
+    },
+    "SaleTransaction": {
+      "title": "SaleTransaction",
+      "description": "A recorded sale transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stock_item_id": { "type": "string" },
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" },
+              "total": { "type": "number" }
+            }
+          }
+        },
+        "total": { "type": "number" },
+        "date": { "type": "string" },
+        "method": { "type": "string", "enum": ["efectivo", "tarjeta", "bizum"] },
+        "origin": { "type": "string", "enum": ["terminal", "mesa", "ticket_ai"] },
+        "notes": { "type": "string" },
+        "table_number": { "type": "string" },
+        "caja_session_id": { "type": "string" }
+      },
+      "required": ["id", "ownerId", "items", "total", "date", "method", "origin"]
+    },
+    "Provider": {
+      "title": "Provider",
+      "description": "A supplier for the bar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "category": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "taxId": { "type": "string" },
+        "address": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "billingCycle": { "type": "string" },
+        "nextPaymentDate": { "type": "string" },
+        "nextPaymentAmount": { "type": "number" },
+        "ytdPurchases": { "type": "number" },
+        "orderFrequency": { "type": "string" },
+        "avgLeadTimeDays": { "type": "number" },
+        "is_active": { "type": "boolean" }
+      },
+      "required": ["id", "ownerId", "name", "category", "is_active"]
+    },
+    "CustomerProfile": {
+      "title": "CustomerProfile",
+      "description": "A customer profile in the CRM",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "category": { "type": "string" },
+        "loyaltyTier": { "type": "string" },
+        "loyaltyPoints": { "type": "number" },
+        "progressToNextPct": { "type": "number" },
+        "nextReward": { "type": "string" },
+        "ytdSales": { "type": "number" },
+        "outstandingCredit": { "type": "number" },
+        "preferredStock": { "type": "string" },
+        "internalNotes": { "type": "string" },
+        "is_active": { "type": "boolean" }
+      },
+      "required": ["id", "ownerId", "fullName", "category", "loyaltyTier"]
+    },
+    "EventModel": {
+      "title": "EventModel",
+      "description": "A scheduled event (football match or party)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "customerName": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "fieldNumber": { "type": "string" },
+        "price": { "type": "number" },
+        "status": { "type": "string" },
+        "cateringNeeded": { "type": "boolean" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "ownerId", "title", "customerName", "date", "status"]
+    },
+    "PurchaseInvoice": {
+      "title": "PurchaseInvoice",
+      "description": "A record of stock purchase receipt",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "providerName": { "type": "string" },
+        "date": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stock_item_id": { "type": "string" },
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "unit_cost": { "type": "number" },
+              "subtotal": { "type": "number" }
+            }
+          }
+        },
+        "total": { "type": "number" },
+        "updateStock": { "type": "boolean" },
+        "updateCost": { "type": "boolean" }
+      },
+      "required": ["id", "ownerId", "providerName", "date", "items", "total"]
+    },
+    "InventoryMovement": {
+      "title": "InventoryMovement",
+      "description": "A movement of stock",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "itemId": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["COMPRA", "VENTA", "AJUSTE", "COMBO", "FRACCIONADO"] },
+        "quantity": { "type": "number" },
+        "documentId": { "type": "string" },
+        "operator": { "type": "string" }
+      },
+      "required": ["id", "itemId", "date", "type", "quantity", "documentId"]
+    },
+    "Presentation": {
+      "title": "Presentation",
+      "description": "Stock item presentation option",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "units": { "type": "number" }
+      },
+      "required": ["id", "name", "units"]
+    }
+  },
+  "firestore": {
+    "stock": {
+      "schema": "StockItem",
+      "description": "Inventory items"
+    },
+    "sales": {
+      "schema": "SaleTransaction",
+      "description": "Sales records"
+    },
+    "customers": {
+      "schema": "CustomerProfile",
+      "description": "CRM customer data"
+    },
+    "providers": {
+      "schema": "Provider",
+      "description": "Supplier database"
+    },
+    "events": {
+      "schema": "EventModel",
+      "description": "Schedule of football fields and events"
+    },
+    "purchases": {
+      "schema": "PurchaseInvoice",
+      "description": "Stock replenishment purchase invoices"
+    },
+    "inventory_movements": {
+      "schema": "InventoryMovement",
+      "description": "Record of stock movements (Kardex)"
+    },
+    "presentations": {
+      "schema": "Presentation",
+      "description": "Available stock item presentations"
+    }
+  }
+}

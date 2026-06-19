@@ -1,0 +1,339 @@
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Hanken Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Custom palette matching Inventory Precision System specification */
+  --color-bg-main: #e2e8f0;
+  
+  /* Primary - Deep Slate */
+  --color-brand-primary: #091426;
+  --color-brand-on-primary: #ffffff;
+  --color-brand-primary-container: #1e293b;
+  --color-brand-on-primary-container: #8590a6;
+  
+  /* Secondary - Football Green (replaced Amber #fea619 with Green #16a34a / #22c55e) */
+  --color-brand-secondary: #14532d;
+  --color-brand-on-secondary: #ffffff;
+  --color-brand-secondary-container: #22c55e;
+  --color-brand-on-secondary-container: #14532d;
+  
+  /* Tertiary - Emerald Green */
+  --color-brand-tertiary: #00190e;
+  --color-brand-on-tertiary: #ffffff;
+  --color-brand-tertiary-container: #00301e;
+  --color-brand-on-tertiary-container: #00a472;
+  
+  /* Error - Coral Red */
+  --color-brand-error: #ba1a1a;
+  --color-brand-error-container: #ffdad6;
+  --color-brand-on-error-container: #93000a;
+  
+  /* Surfaces and borders */
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f1f5f9;
+  --color-surface-base: #e2e8f0;
+  --color-surface-dim: #cbdbf5;
+  --color-border-card: #eff4ff;
+  --color-border-subtle: #e2e8f0;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg-main);
+    color: #0b1c30;
+    font-family: var(--font-sans);
+  }
+}
+
+/* Global Dark Mode Overrides */
+html.dark, .dark {
+  --color-bg-main: #0b1220;
+  --color-surface-lowest: #111827;
+  --color-surface-low: #1a2332;
+  --color-surface-base: #0b1220;
+  --color-border-card: #1f2937;
+  --color-border-subtle: #1f2937;
+  
+  background-color: #0b1220 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark body,
+.dark #viewport {
+  background-color: #0b1220 !important;
+  color: #f1f5f9 !important;
+}
+
+/* Base override for white backgrounds with any opacity modifiers */
+.dark .bg-white,
+.dark [class*="bg-white"] {
+  background-color: #111827 !important;
+}
+
+/* Base override for gray/light backgrounds and their opacities */
+.dark .bg-slate-50,
+.dark [class*="bg-slate-50"],
+.dark .bg-[#f8f9ff],
+.dark [class*="bg-[#f8f9ff]"],
+.dark .bg-slate-100,
+.dark [class*="bg-slate-100"] {
+  background-color: #0b1220 !important;
+}
+
+.dark .bg-slate-200,
+.dark [class*="bg-slate-200"],
+.dark [class*="bg-slate-100/50"] {
+  background-color: #1a2332 !important;
+}
+
+/* Specific card backgrounds and special corporate panels */
+.dark .bg-\[\#eff4ff\]\/30,
+.dark [class*="bg-[#eff4ff]"] {
+  background-color: #1a2332 !important;
+}
+
+/* Text overrides for high-contrast readability */
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6, 
+.dark th, .dark strong, .dark label,
+.dark .text-slate-900, .dark .text-slate-800, .dark .text-[#0c1b33], .dark .text-[#0c1b33] *, .dark .text-slate-950,
+.dark .text-\[\#091426\], .dark [class*="text-\[\#091426\]"],
+.dark [class*="text-slate-9"],
+.dark [class*="text-slate-8"],
+.dark [class*="text-slate-7"] {
+  color: #f1f5f9 !important;
+}
+
+.dark p, .dark span:not(.text-xs):not(.font-mono),
+.dark .text-slate-650, .dark .text-slate-500, .dark .text-slate-600,
+.dark [class*="text-slate-6"],
+.dark [class*="text-slate-5"] {
+  color: #cbd5e1 !important;
+}
+
+/* Global custom border utility for inputs and listboxes */
+.border-slate-205 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Border overrides - Modern type SaaS 2025: super subtle transparent border or high premium box shadow */
+.dark .border,
+.dark .border-slate-100,
+.dark .border-slate-150,
+.dark .border-slate-200,
+.dark .border-slate-205,
+.dark .border-[#eff4ff],
+.dark [class*="border-slate-"],
+.dark [class*="border-[#eff4ff]"] {
+  border-color: #1f2937 !important;
+}
+
+/* Modernize cards/modals: remove heavy solid gray borders and replace by soft deep shadows/depth */
+.dark .rounded-2xl.border, 
+.dark .rounded-xl.border,
+.dark .rounded-2xl.border-[#eff4ff],
+.dark .rounded-xl.border-[#eff4ff] {
+  border-color: #1f2937 !important;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.7) !important;
+}
+
+.dark .hover\:bg-slate-50:hover, 
+.dark .hover\:bg-slate-100:hover,
+.dark [class*="hover:bg-slate"]:hover {
+  background-color: #1a2332 !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1a2332 !important;
+}
+
+/* Table dark mode controls */
+.dark table {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+}
+
+.dark tr {
+  border-color: #1f2937 !important;
+}
+
+.dark tr:hover {
+  background-color: #1a2332 !important;
+}
+
+.dark th {
+  background-color: #0b1220 !important;
+  color: #cbd5e1 !important;
+  border-color: #1f2937 !important;
+}
+
+.dark td {
+  color: #f1f5f9 !important;
+  border-color: #1f2937 !important;
+}
+
+/* Form fields in dark mode */
+.dark input, .dark select, .dark textarea {
+  background-color: #1a2332 !important;
+  color: #f8fafc !important;
+  border-color: #1f2937 !important;
+}
+
+.dark input::placeholder {
+  color: #64748b !important;
+}
+
+.dark select option {
+  background-color: #111827 !important;
+  color: #f8fafc !important;
+}
+
+/* Indicators and alert panels - green subtle highlight on active item */
+.dark .bg-emerald-50,
+.dark .bg-emerald-50\/40,
+.dark .bg-emerald-50\/50 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  color: #4ade80 !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+.dark .bg-rose-50,
+.dark .bg-rose-50\/40 {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+  color: #f87171 !important;
+  border-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+.dark .bg-amber-50,
+.dark .bg-amber-50\/45 {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.2) !important;
+}
+
+/* Translucent Yellow/Amber container fallback for bar/extras list */
+.dark .bg-yellow-50,
+.dark .bg-yellow-50\/40,
+.dark .bg-yellow-50\/50,
+.dark .bg-yellow-50\/60,
+.dark [class*="bg-yellow-50"] {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+}
+
+/* High Contrast Indicators for positive, critical, & warnings in Dark Mode */
+.dark .text-emerald-50,
+.dark .text-emerald-100,
+.dark .text-emerald-600,
+.dark .text-emerald-700,
+.dark .text-emerald-800,
+.dark .text-emerald-900,
+.dark .text-[#10b981],
+.dark .text-[#15803d],
+.dark [class*="text-emerald-"],
+.dark .text-green-650,
+.dark .text-green-700,
+.dark .text-green-800,
+.dark [class*="text-green-"] {
+  color: #4ade80 !important; /* Luminous active green */
+}
+
+.dark .text-rose-50,
+.dark .text-rose-100,
+.dark .text-rose-600,
+.dark .text-rose-700,
+.dark .text-rose-800,
+.dark .text-rose-900,
+.dark [class*="text-rose-"],
+.dark .text-red-50,
+.dark .text-red-100,
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-red-800,
+.dark .text-red-900,
+.dark .text-[#ba1a1a],
+.dark .text-[#93000a],
+.dark [class*="text-red-"] {
+  color: #f87171 !important; /* High contrast red */
+}
+
+.dark .text-amber-50,
+.dark .text-amber-100,
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900,
+.dark .text-yellow-600,
+.dark .text-yellow-700,
+.dark .text-yellow-800,
+.dark .text-yellow-900,
+.dark .text-[#92400e],
+.dark [class*="text-amber-"],
+.dark [class*="text-yellow-"] {
+  color: #fbbf24 !important; /* Accessible high-vibe warning gold */
+}
+
+/* Correct footer background color */
+.dark footer {
+  background-color: #0b1220 !important;
+  border-color: #1f2937 !important;
+}
+
+/* Header and sidebar styling adjustments */
+.dark header {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+}
+
+/* Custom modal styling / Backdrop glass effect */
+.dark .fixed.inset-0.bg-\[\#060e1d\]\/85,
+.dark .fixed.inset-0.bg-\[\#091426\]\/50,
+.dark .fixed.inset-0 {
+  background-color: rgba(11, 18, 32, 0.6) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* Active green branding feedback */
+.dark .border-l-4.border-\[\#16a34a\] {
+  border-left-color: #22c55e !important;
+}
+
+/* Helper display text typography utilities based on spec */
+.text-display-lg {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 40px;
+  letter-spacing: -0.02em;
+}
+
+.text-headline-md {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.text-title-sm {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.text-data-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.label-caps {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

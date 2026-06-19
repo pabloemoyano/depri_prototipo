@@ -1,0 +1,361 @@
+{
+  "mode": "firestore",
+  "auditsFound": [
+    {
+      "id": "AUD-5460",
+      "date": "2026-06-15T21:34:06.761Z",
+      "responsible": "btndeportes@gmail.com",
+      "adjustedCount": 27,
+      "adjustmentCost": -18400.14,
+      "adjustmentSales": -27400,
+      "note": "Auditoría de Control Físico de Barra"
+    },
+    {
+      "id": "AUD-3730",
+      "date": "2026-06-15T14:09:57.697Z",
+      "responsible": "Marcos Inventory",
+      "adjustedCount": 27,
+      "adjustmentCost": 5389.59,
+      "adjustmentSales": 8700,
+      "note": "Auditoría de Control Físico de Barra"
+    },
+    {
+      "id": "AUD-4651",
+      "date": "2026-06-15T13:57:57.556Z",
+      "responsible": "Marcos Inventory",
+      "adjustedCount": 27,
+      "adjustmentCost": -5760,
+      "adjustmentSales": -10000,
+      "note": "Auditoría de Control Físico de Barra"
+    },
+    {
+      "id": "AUD-4003",
+      "date": "2026-06-15T02:08:25.906Z",
+      "responsible": "Marcos Inventory",
+      "adjustedCount": 27,
+      "adjustmentCost": 5760,
+      "adjustmentSales": 10000,
+      "note": "Auditoría de Control Físico"
+    },
+    {
+      "id": "AUD-9123",
+      "date": "2026-06-15T02:08:25.896Z",
+      "responsible": "Marcos Inventory",
+      "adjustedCount": 27,
+      "adjustmentCost": 5760,
+      "adjustmentSales": 10000,
+      "note": "Auditoría de Control Físico"
+    },
+    {
+      "id": "AUD-3275",
+      "date": "2026-06-15T01:42:23.167Z",
+      "responsible": "Marcos Inventory",
+      "adjustedCount": 27,
+      "adjustmentCost": -2880,
+      "adjustmentSales": -5000,
+      "note": "Auditoría de Control Físico"
+    }
+  ],
+  "movementsFound": [
+    {
+      "id": "2J5vAJzmB89rV3UMvUhk",
+      "auditId": "AUD-3730",
+      "itemId": "X1gDSMM9FrQr8BsZ4rsO",
+      "quantity": -1,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-3730",
+      "operator": "Marcos Inventory",
+      "date": "2026-06-15T14:09:57.696Z"
+    },
+    {
+      "id": "3Ph7D1ebVZT2vliZhSYJ",
+      "auditId": "AUD-4003",
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "quantity": 2,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-4003",
+      "operator": "Marcos Inventory",
+      "date": "2026-06-15T02:08:25.906Z"
+    },
+    {
+      "id": "4uyvwhBQxyWe7yTh7sAG",
+      "auditId": "AUD-5460",
+      "itemId": "tNMhIQ90MWC9TF1h4cVK",
+      "quantity": -5,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.760Z"
+    },
+    {
+      "id": "8sWumhsFi3x5H6iIUcqs",
+      "auditId": "AUD-5460",
+      "itemId": "LDX5MP4Qhr1l2470cUcd",
+      "quantity": 8,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.761Z"
+    },
+    {
+      "id": "DW6KKJCocGRtKO044zcP",
+      "auditId": "AUD-4651",
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "quantity": -2,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-4651",
+      "operator": "Marcos Inventory",
+      "date": "2026-06-15T13:57:57.556Z"
+    },
+    {
+      "id": "EjX5eGTKaO4vPH7ewkQP",
+      "auditId": "AUD-5460",
+      "itemId": "KPz8pkwHVWelNYWK0J9K",
+      "quantity": -3,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.761Z"
+    },
+    {
+      "id": "G2Drki0XhC6jF58D32it",
+      "auditId": "AUD-9123",
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "quantity": 2,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-9123",
+      "operator": "Marcos Inventory",
+      "date": "2026-06-15T02:08:25.896Z"
+    },
+    {
+      "id": "I9kc4FUBwxgtX69VQAAn",
+      "auditId": "unknown",
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "quantity": -1,
+      "type": "AJUSTE",
+      "documentId": "Ajuste Manual",
+      "operator": "Sistema",
+      "date": "2026-06-15T01:41:39.316Z"
+    },
+    {
+      "id": "MnR8CJAOG5N7nmMUR8QR",
+      "auditId": "AUD-5460",
+      "itemId": "ZHycNpXZWvlJHRm0X464",
+      "quantity": -4,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.760Z"
+    },
+    {
+      "id": "NQZFGE2EVHMLuulmiJrM",
+      "auditId": "AUD-5460",
+      "itemId": "sZvwS3rWnaeAjbaukNSB",
+      "quantity": -2,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.760Z"
+    },
+    {
+      "id": "OsIwRv3BfCsZa3ir12As",
+      "auditId": "AUD-3730",
+      "itemId": "Rc1F35DeLPxGjUGdwiUN",
+      "quantity": 1,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-3730",
+      "operator": "Marcos Inventory",
+      "date": "2026-06-15T14:09:57.697Z"
+    },
+    {
+      "id": "STxWsPk3qH99bYDKfVP1",
+      "auditId": "AUD-5460",
+      "itemId": "thhrceLNhvZ213rsvEtN",
+      "quantity": -2,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.761Z"
+    },
+    {
+      "id": "Y2sztlR0r3X5BYKLbQzH",
+      "auditId": "AUD-5460",
+      "itemId": "CkSsHNH6ertYDeQexvNR",
+      "quantity": 7,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.761Z"
+    },
+    {
+      "id": "ZLgXB5aP8Hi2VZ7rCaDg",
+      "auditId": "AUD-5460",
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "quantity": -2,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.758Z"
+    },
+    {
+      "id": "ZOVJzmv88VzFmsCvj4t0",
+      "auditId": "AUD-5460",
+      "itemId": "ZiXpsF8ZLefNJFmmR4NG",
+      "quantity": -3,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.761Z"
+    },
+    {
+      "id": "bF4MMHs8EvrPiVgYJK3z",
+      "auditId": "AUD-5460",
+      "itemId": "X1gDSMM9FrQr8BsZ4rsO",
+      "quantity": -4,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.759Z"
+    },
+    {
+      "id": "gjqxzUZTQd95iNRZslDU",
+      "auditId": "AUD-5460",
+      "itemId": "J5iMErSJyOospf9mj91U",
+      "quantity": -1,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.760Z"
+    },
+    {
+      "id": "nTZzAe8LWpxAd2YCAzIN",
+      "auditId": "AUD-3275",
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "quantity": -1,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-3275",
+      "operator": "Marcos Inventory",
+      "date": "2026-06-15T01:42:23.167Z"
+    },
+    {
+      "id": "o2nN4gUkrfivfnECwI6a",
+      "auditId": "AUD-5460",
+      "itemId": "Rc1F35DeLPxGjUGdwiUN",
+      "quantity": 5,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.760Z"
+    },
+    {
+      "id": "pD21pNb0Z9WuW64TF583",
+      "auditId": "AUD-3730",
+      "itemId": "FWnaRw6BRzlY4GVAzcx5",
+      "quantity": 2,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-3730",
+      "operator": "Marcos Inventory",
+      "date": "2026-06-15T14:09:57.696Z"
+    },
+    {
+      "id": "qeDWXy5i1j29v4I9Cts8",
+      "auditId": "AUD-5460",
+      "itemId": "qCz7to6ccLmsMAJUMfGe",
+      "quantity": -3,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.760Z"
+    },
+    {
+      "id": "yzMwU83pROX71zqTKCfl",
+      "auditId": "AUD-5460",
+      "itemId": "soGZHRB1Ugy7KORXICFK",
+      "quantity": -1,
+      "type": "AJUSTE",
+      "documentId": "Auditoría AUD-5460",
+      "operator": "btndeportes@gmail.com",
+      "date": "2026-06-15T21:34:06.760Z"
+    }
+  ],
+  "removedStockSimulated": {
+    "CkSsHNH6ertYDeQexvNR": {
+      "name": "Viñas de balbo 1125",
+      "currentStock": 33,
+      "simulatedChange": -7,
+      "finalStock": 26
+    },
+    "J5iMErSJyOospf9mj91U": {
+      "name": "Canciller tinto 1125",
+      "currentStock": 22,
+      "simulatedChange": 1,
+      "finalStock": 23
+    },
+    "KPz8pkwHVWelNYWK0J9K": {
+      "name": "Placer 1.5L",
+      "currentStock": 97,
+      "simulatedChange": 3,
+      "finalStock": 100
+    },
+    "LDX5MP4Qhr1l2470cUcd": {
+      "name": "Soda sifon 2L",
+      "currentStock": 57,
+      "simulatedChange": -8,
+      "finalStock": 49
+    },
+    "Rc1F35DeLPxGjUGdwiUN": {
+      "name": "Agua mineral 500cc",
+      "currentStock": 9,
+      "simulatedChange": -6,
+      "finalStock": 3
+    },
+    "X1gDSMM9FrQr8BsZ4rsO": {
+      "name": "Agua mineral 2L",
+      "currentStock": 69,
+      "simulatedChange": 5,
+      "finalStock": 74
+    },
+    "ZHycNpXZWvlJHRm0X464": {
+      "name": "Cepita 200ml",
+      "currentStock": 24,
+      "simulatedChange": 4,
+      "finalStock": 28
+    },
+    "ZiXpsF8ZLefNJFmmR4NG": {
+      "name": "Placer 500cc",
+      "currentStock": 17,
+      "simulatedChange": 3,
+      "finalStock": 20
+    },
+    "qCz7to6ccLmsMAJUMfGe": {
+      "name": "Iguana 1L",
+      "currentStock": 89,
+      "simulatedChange": 3,
+      "finalStock": 92
+    },
+    "sZvwS3rWnaeAjbaukNSB": {
+      "name": "Gaseosa linea coca cola 310cc",
+      "currentStock": 99,
+      "simulatedChange": 2,
+      "finalStock": 101
+    },
+    "soGZHRB1Ugy7KORXICFK": {
+      "name": "Gaseosa linea coca cola 1250",
+      "currentStock": 55,
+      "simulatedChange": 1,
+      "finalStock": 56
+    },
+    "tNMhIQ90MWC9TF1h4cVK": {
+      "name": "Brahma 1L",
+      "currentStock": 75,
+      "simulatedChange": 5,
+      "finalStock": 80
+    },
+    "thhrceLNhvZ213rsvEtN": {
+      "name": "Powerade 500cc",
+      "currentStock": 77,
+      "simulatedChange": 2,
+      "finalStock": 79
+    }
+  }
+}

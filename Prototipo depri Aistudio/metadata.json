@@ -1,0 +1,6 @@
+{
+  "name": "De Primera",
+  "description": "Sistema completo 'De Primera - fútbol & eventos' para control de stock, gestión de mesas, registro de ventas y carga de tíquets mediante Inteligencia Artificial.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
