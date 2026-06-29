@@ -82,10 +82,34 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedSubaccountId, setSelectedSubaccountId] = useState("");
   const [inputType, setInputType] = useState<"unit" | "presentation">("presentation");
+  const [tempPresentationUnits, setTempPresentationUnits] = useState<number>(1);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [unitsQty, setUnitsQty] = useState<number>(1);
   const [customCost, setCustomCost] = useState<number>(0.0);
   const [itemSubtotal, setItemSubtotal] = useState<number>(0.0);
+
+  // String input states to avoid automatic zero overwrites during editing and handle custom formatting
+  const [qtyInput, setQtyInput] = useState<string>("1");
+  const [costInput, setCostInput] = useState<string>("0.00");
+  const [subtotalInput, setSubtotalInput] = useState<string>("0.00");
+
+  React.useEffect(() => {
+    if (!document.activeElement || document.activeElement.id !== "purchase-units-qty") {
+      setQtyInput(String(unitsQty));
+    }
+  }, [unitsQty]);
+
+  React.useEffect(() => {
+    if (!document.activeElement || document.activeElement.id !== "purchase-custom-cost") {
+      setCostInput(customCost.toFixed(2));
+    }
+  }, [customCost]);
+
+  React.useEffect(() => {
+    if (!document.activeElement || document.activeElement.id !== "purchase-item-subtotal") {
+      setSubtotalInput(itemSubtotal.toFixed(2));
+    }
+  }, [itemSubtotal]);
   const [invoiceDateState, setInvoiceDateState] = useState<string>(() => {
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -255,6 +279,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     if (item) {
       const uCost = Number((item.purchase_price || 0.0).toFixed(2));
       const pUnits = item.presentationUnits || 1;
+      setTempPresentationUnits(pUnits);
       const initialCost = inputType === "presentation" ? Number((uCost * pUnits).toFixed(2)) : uCost;
       setCustomCost(initialCost);
       setItemSubtotal(Number((unitsQty * initialCost).toFixed(2)));
@@ -282,7 +307,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     setInputType(newType);
     if (currentItem) {
        const uCost = Number((currentItem.purchase_price || 0.0).toFixed(2));
-       const pUnits = currentItem.presentationUnits || 1;
+       const pUnits = tempPresentationUnits || 1;
        let newCost = newType === "presentation" ? Number((uCost * pUnits).toFixed(2)) : uCost;
        
        if (newType === "unit" && inputType === "presentation") {
@@ -314,12 +339,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
     const item = stock.find(p => p.id === selectedProductId);
     if (!item) return;
 
-    // Calculate final quantity based on presentation choice (if exists)
-    // Note: This logic assumes presentation logic needs to be integrated into UI states, 
-    // which requires updating state management in PurchasesTab first.
-    // Simplifying: Adding fields as requested for the item model first.
-    
-    const presUnits = Number(item.presentationUnits) || 1;
+    const presUnits = Number(tempPresentationUnits) || 1;
     const calculatedUnitCost = inputType === "presentation"
       ? Number((Number(customCost) / presUnits).toFixed(2)) 
       : Number(Number(customCost).toFixed(2));
@@ -332,7 +352,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
       subtotal: isNaN(Number(itemSubtotal)) ? 0 : Number(Number(itemSubtotal).toFixed(2)),
       inputType: inputType,
       inputQty: Number(unitsQty),
-      presentationName: item.presentationName || "",
+      presentationName: item.presentationName || "Pack/Bulto",
       presentationUnits: presUnits
     };
 
@@ -340,9 +360,10 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
 
     // Reset item inputs
     setSelectedProductId("");
-    setUnitsQty(24);
+    setUnitsQty(1); // Set to 1 as a more standard starting count for custom purchases
     setCustomCost(0.0);
     setItemSubtotal(0.0);
+    setTempPresentationUnits(1);
   };
 
   // Final voucher submission
@@ -445,14 +466,14 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
   const highestCostProduct = stock.slice().sort((a,b) => b.purchase_price - a.purchase_price)[0];
   const hasCostWarning = React.useMemo(() => {
     if (!currentItem) return false;
-    const unitCost = inputType === "presentation" && currentItem.presentationUnits 
-        ? customCost / currentItem.presentationUnits 
+    const unitCost = inputType === "presentation" && tempPresentationUnits 
+        ? customCost / tempPresentationUnits 
         : customCost;
     return unitCost > currentItem.purchase_price * 1.05;
-  }, [currentItem, customCost, inputType]);
+  }, [currentItem, customCost, inputType, tempPresentationUnits]);
 
-  const addedUnits = inputType === "presentation" && currentItem?.presentationUnits 
-        ? Number(unitsQty) * currentItem.presentationUnits 
+  const addedUnits = inputType === "presentation" && tempPresentationUnits 
+        ? Number(unitsQty) * tempPresentationUnits 
         : Number(unitsQty);
 
   return (
@@ -744,6 +765,18 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
             </div>
           </div>
 
+          {!affectsCaja && (
+            <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 p-3.5 rounded-xl flex items-start gap-3 animate-fade-in my-2">
+              <div className="text-amber-600 dark:text-amber-400 font-bold text-sm mt-0.5">💡</div>
+              <div>
+                <p className="text-xs font-bold text-amber-800 dark:text-amber-300">Nota sobre el Origen de Fondos:</p>
+                <p className="text-[11px] text-amber-950 dark:text-amber-200 mt-0.5 leading-relaxed">
+                  Al desmarcar esta opción, esta compra no restará dinero de la Caja Diaria. En su lugar, <strong>el egreso se registrará automáticamente en el Libro de Gestión (como un egreso de los fondos del administrador)</strong> para mantener la precisión y el control completo de los gastos generales de la empresa.
+                </p>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleAddTempItem} className="space-y-5">
             {analyzingInvoice && (
               <div className="p-4 bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center gap-3 animate-pulse">
@@ -877,7 +910,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className={`grid grid-cols-1 ${inputType === "presentation" ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4`}>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">Tipo de Ingreso :</label>
                   <div className="flex bg-slate-100 p-0.5 rounded-lg">
@@ -885,27 +918,88 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                     <button type="button" onClick={() => handleInputTypeChange("unit")} className={`flex-1 text-[9px] font-bold py-1.5 rounded ${inputType === "unit" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>Unidad</button>
                   </div>
                 </div>
+                {inputType === "presentation" && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase block">U. por Presentación :</label>
+                    <input
+                      id="purchase-presentation-units"
+                      type="number"
+                      disabled
+                      value={tempPresentationUnits}
+                      className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 rounded-xl text-xs font-sans outline-hidden cursor-not-allowed"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">Cantidad ({inputType === "presentation" ? `${currentItem?.presentationName || "Present."} x ${currentItem?.presentationUnits || 1}u` : "Unidad"}) :</label>
+                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">Cantidad ({inputType === "presentation" ? `${currentItem?.presentationName || "Pack/Bulto"} x ${tempPresentationUnits}u` : "Unidad"}) :</label>
                   <input
-                    type="number"
-                    min="1"
+                    id="purchase-units-qty"
+                    type="text"
                     required
-                    value={unitsQty}
-                    onChange={(e) => handleQtyChange(Number(e.target.value))}
+                    value={qtyInput}
+                    onChange={(e) => {
+                      const valStr = e.target.value;
+                      if (/^\d*$/.test(valStr)) {
+                        setQtyInput(valStr);
+                        const val = parseInt(valStr, 10);
+                        if (!isNaN(val) && val >= 0) {
+                          setUnitsQty(val);
+                          setItemSubtotal(Number((val * customCost).toFixed(2)));
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      const val = parseInt(qtyInput, 10);
+                      if (isNaN(val) || val < 1) {
+                        setUnitsQty(1);
+                        setQtyInput("1");
+                        setItemSubtotal(Number((1 * customCost).toFixed(2)));
+                      } else {
+                        setQtyInput(String(val));
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-sans outline-hidden focus:ring-1 focus:ring-emerald-500/30"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">Costo Unitario ($) :</label>
+                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    {inputType === "presentation" ? `Costo de Presentación (${currentItem?.presentationName || "Pack"}) ($) :` : "Costo Unitario ($) :"}
+                  </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0.0"
+                    id="purchase-custom-cost"
+                    type="text"
                     required
-                    value={customCost}
-                    onChange={(e) => handleCostChange(Number(e.target.value))}
+                    value={costInput}
+                    onFocus={() => {
+                      const parsed = parseFloat(costInput);
+                      if (!isNaN(parsed) && parsed % 1 === 0) {
+                        setCostInput(String(parsed));
+                      }
+                    }}
+                    onChange={(e) => {
+                      const valStr = e.target.value;
+                      if (/^\d*\.?\d*$/.test(valStr)) {
+                        setCostInput(valStr);
+                        const val = parseFloat(valStr);
+                        if (!isNaN(val) && val >= 0) {
+                          setCustomCost(val);
+                          setItemSubtotal(Number((unitsQty * val).toFixed(2)));
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseFloat(costInput);
+                      if (isNaN(parsed) || parsed < 0) {
+                        setCustomCost(0);
+                        setCostInput("0.00");
+                        setItemSubtotal(0);
+                      } else {
+                        setCostInput(parsed.toFixed(2));
+                        setCustomCost(parsed);
+                        setItemSubtotal(Number((unitsQty * parsed).toFixed(2)));
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-850 dark:text-slate-100 rounded-xl text-xs font-mono outline-hidden focus:ring-1 focus:ring-emerald-500/30"
                   />
                 </div>
@@ -913,12 +1007,44 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">Subtotal Calculado ($) :</label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0.0"
+                    id="purchase-item-subtotal"
+                    type="text"
                     required
-                    value={itemSubtotal}
-                    onChange={(e) => handleSubtotalChange(Number(e.target.value))}
+                    value={subtotalInput}
+                    onFocus={() => {
+                      const parsed = parseFloat(subtotalInput);
+                      if (!isNaN(parsed) && parsed % 1 === 0) {
+                        setSubtotalInput(String(parsed));
+                      }
+                    }}
+                    onChange={(e) => {
+                      const valStr = e.target.value;
+                      if (/^\d*\.?\d*$/.test(valStr)) {
+                        setSubtotalInput(valStr);
+                        const val = parseFloat(valStr);
+                        if (!isNaN(val) && val >= 0) {
+                          setItemSubtotal(val);
+                          if (unitsQty > 0) {
+                            const cost = Number((val / unitsQty).toFixed(2));
+                            setCustomCost(cost);
+                          }
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = parseFloat(subtotalInput);
+                      if (isNaN(parsed) || parsed < 0) {
+                        setItemSubtotal(0);
+                        setSubtotalInput("0.00");
+                      } else {
+                        setSubtotalInput(parsed.toFixed(2));
+                        setItemSubtotal(parsed);
+                        if (unitsQty > 0) {
+                          const cost = Number((parsed / unitsQty).toFixed(2));
+                          setCustomCost(cost);
+                        }
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-850 dark:text-slate-100 rounded-xl text-xs font-mono outline-hidden focus:ring-1 focus:ring-emerald-500/30"
                   />
                 </div>
@@ -932,7 +1058,7 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                 <div className="space-y-1">
                   <p className="font-extrabold uppercase text-[10px]">Alerta de Alza de Costos</p>
                   <p className="font-medium text-[11px]">
-                    El costo ingresado proporcional (${inputType === 'presentation' && currentItem?.presentationUnits ? (customCost / currentItem.presentationUnits).toFixed(2) : customCost.toFixed(2)}) supera los registros históricos de adquisición para este producto (${currentItem?.purchase_price.toFixed(2)}). Esto reducirá tu margen de operación de un %{(((currentItem?.selling_price || 0) - (currentItem?.purchase_price || 0)) / (currentItem?.selling_price || 1) * 100).toFixed(1)} a un %{(((currentItem?.selling_price || 0) - (inputType === 'presentation' && currentItem?.presentationUnits ? (customCost / currentItem.presentationUnits) : customCost)) / (currentItem?.selling_price || 1) * 100).toFixed(1)}.
+                    El costo ingresado proporcional (${inputType === 'presentation' && tempPresentationUnits ? (customCost / tempPresentationUnits).toFixed(2) : customCost.toFixed(2)}) supera los registros históricos de adquisición para este producto (${currentItem?.purchase_price.toFixed(2)}). Esto reducirá tu margen de operación de un %{(((currentItem?.selling_price || 0) - (currentItem?.purchase_price || 0)) / (currentItem?.selling_price || 1) * 100).toFixed(1)} a un %{(((currentItem?.selling_price || 0) - (inputType === 'presentation' && tempPresentationUnits ? (customCost / tempPresentationUnits) : customCost)) / (currentItem?.selling_price || 1) * 100).toFixed(1)}.
                   </p>
                 </div>
               </div>
@@ -1285,6 +1411,8 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                       
                       const itemsCount = Array.isArray(inv?.items) ? inv.items.length : 0;
                       const displayTotal = Number(inv?.total) || 0;
+                      const affectsCaja = inv?.affectsCaja !== false;
+                      const isDeletable = !affectsCaja || (activeCaja && activeCaja.id === inv.cajaId);
                       
                       return (
                         <tr key={inv?.id || Math.random().toString()} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition">
@@ -1319,9 +1447,18 @@ export const PurchasesTab: React.FC<PurchasesTabProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setPurchaseToDeleteId(inv.id)}
-                                className="p-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-lg transition cursor-pointer"
-                                title="Eliminar Compra"
+                                disabled={!isDeletable}
+                                onClick={() => {
+                                  if (isDeletable) {
+                                    setPurchaseToDeleteId(inv.id);
+                                  }
+                                }}
+                                className={`p-1.5 rounded-lg transition ${
+                                  isDeletable
+                                    ? "bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 cursor-pointer"
+                                    : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                                }`}
+                                title={isDeletable ? "Eliminar Compra" : "No se puede eliminar porque la caja asociada a esta compra ya está cerrada"}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>

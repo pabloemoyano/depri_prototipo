@@ -493,20 +493,14 @@ async function backfillKardex() {
           );
           if (!hasPurchaseMove) {
             const moveDocRef = db.collection(COL.INVENTORY_MOVEMENTS).doc();
-            let moveDate = (purchase as any).operationDate ? ((purchase as any).operationDate + "T12:00:00.000Z") : (purchase as any).date;
-            if (!moveDate && (purchase as any).invoiceDate) {
-              try {
-                moveDate = new Date((purchase as any).invoiceDate + "T12:00:00").toISOString();
-              } catch (e) {
-                moveDate = null;
-              }
-            }
+            const purchaseDayStr = (purchase as any).purchaseDate || (purchase as any).invoiceDate || (purchase as any).operationDate;
+            let moveDate = purchaseDayStr ? (purchaseDayStr + "T12:00:00.000Z") : (purchase as any).date;
             if (!moveDate) {
               moveDate = (purchase as any).fecha || new Date().toISOString();
             }
 
-            const opDate = (purchase as any).operationDate || moveDate.split("T")[0];
-            const pDate = (purchase as any).purchaseDate || (purchase as any).invoiceDate || moveDate.split("T")[0];
+            const opDate = purchaseDayStr || (purchase as any).operationDate || moveDate.split("T")[0];
+            const pDate = (purchase as any).purchaseDate || (purchase as any).invoiceDate || opDate;
 
             await moveDocRef.set({
               id: moveDocRef.id,
@@ -720,6 +714,73 @@ async function startServer() {
   // Dynamic status API for server
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // Recursive directory scanner for "Mapa de Arquitectura"
+  function getProjectStructure(dir: string): any {
+    const name = path.basename(dir);
+    const ignoreList = [
+      "node_modules", 
+      ".git", 
+      "dist", 
+      ".cache", 
+      "package-lock.json", 
+      ".env", 
+      "firebase_test_log.txt", 
+      "live_instrumentation.log", 
+      "db_diagnostic_output.json", 
+      "deletion_outcome.json", 
+      "audit_fernet_output.json", 
+      "diag.js", 
+      "db.json"
+    ];
+    
+    let stats;
+    try {
+      stats = fs.statSync(dir);
+    } catch (e) {
+      return null;
+    }
+
+    if (!stats.isDirectory()) {
+      return {
+        name,
+        type: "file",
+        path: path.relative(process.cwd(), dir),
+        size: stats.size
+      };
+    }
+
+    const children: any[] = [];
+    try {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        if (ignoreList.includes(file)) continue;
+        const fullPath = path.join(dir, file);
+        const childNode = getProjectStructure(fullPath);
+        if (childNode) {
+          children.push(childNode);
+        }
+      }
+    } catch (e) {
+      // ignore read permission errors or empty dirs
+    }
+
+    return {
+      name: name || "De Primera - Core",
+      type: "directory",
+      path: path.relative(process.cwd(), dir) || ".",
+      children
+    };
+  }
+
+  app.get("/api/project/structure", authenticate, (req: Request, res: Response) => {
+    try {
+      const structure = getProjectStructure(process.cwd());
+      res.json(structure);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fallo al escanear la estructura del proyecto", details: err.message });
+    }
   });
 
   // --- COMPREHENSIVE MEDICAL-GRADE DIAGNOSTIC ENDPOINT (REQUESTED) ---
@@ -1388,7 +1449,7 @@ async function startServer() {
   });
 
   app.post("/api/audits", authenticate, async (req, res) => {
-    const { responsible, note, adjustments } = req.body;
+    const { responsible, note, adjustments, date } = req.body;
     
     const auditDocRef = db.collection(COL.AUDITS).doc();
     const auditId = "AUD-" + Math.floor(1000 + Math.random() * 9000);
@@ -1398,7 +1459,13 @@ async function startServer() {
       let totalSalesLoss = 0;
       let impactedItemCount = 0;
       
+      let snapshotTotalQty = 0;
+      let snapshotTotalItems = 0;
+      let snapshotTotalCostValuation = 0;
+      let snapshotTotalSalesValuation = 0;
+      
       const batch = db.batch();
+      const auditDateISO = date ? new Date(date).toISOString() : new Date().toISOString();
       
       for (const adj of adjustments) {
         const diff = Number(adj.real) - Number(adj.theoretical);
@@ -1412,7 +1479,7 @@ async function startServer() {
           batch.set(moveDocRef, {
             id: moveDocRef.id,
             itemId: adj.id,
-            date: new Date().toISOString(),
+            date: auditDateISO,
             type: "AJUSTE",
             quantity: diff,
             documentId: `Auditoría ${auditId}`,
@@ -1420,11 +1487,18 @@ async function startServer() {
             auditId: auditId
           });
         }
+        
+        // Compute snapshoted/frozen inventory status at the exact closing time
+        const realQty = Number(adj.real) || 0;
+        snapshotTotalQty += realQty;
+        snapshotTotalItems++;
+        snapshotTotalCostValuation += realQty * (Number(adj.valCosto) || 0);
+        snapshotTotalSalesValuation += realQty * (Number(adj.valVenta) || 0);
       }
       
       const auditData = {
         id: auditId,
-        date: new Date().toISOString(),
+        date: auditDateISO,
         responsible: responsible || "btndeportes@gmail.com",
         role: "Senior Auditor",
         adjustmentCost: Number(totalCostLoss.toFixed(2)),
@@ -1432,7 +1506,11 @@ async function startServer() {
         productCount: impactedItemCount,
         status: "Completado",
         note: note || "",
-        items: adjustments
+        items: adjustments,
+        snapshotTotalQty: Number(snapshotTotalQty.toFixed(2)),
+        snapshotTotalItems: snapshotTotalItems,
+        snapshotTotalCostValuation: Number(snapshotTotalCostValuation.toFixed(2)),
+        snapshotTotalSalesValuation: Number(snapshotTotalSalesValuation.toFixed(2))
       };
       
       batch.set(auditDocRef, auditData);
@@ -1445,6 +1523,54 @@ async function startServer() {
       res.json(auditData);
     } catch (err: any) {
       handleFirestoreError(res, err, OperationType.CREATE, COL.AUDITS);
+    }
+  });
+
+  app.put("/api/audits/:id", authenticate, async (req, res) => {
+    const auditId = req.params.id;
+    const { date, note } = req.body;
+    
+    try {
+      const auditSnap = await db.collection(COL.AUDITS).where("id", "==", auditId).get();
+      if (auditSnap.empty) {
+        return res.status(404).json({ error: "Auditoría no encontrada." });
+      }
+
+      const auditDoc = auditSnap.docs[0];
+      const auditDateISO = date ? new Date(date).toISOString() : undefined;
+      
+      const updateData: any = {};
+      if (auditDateISO) updateData.date = auditDateISO;
+      if (note !== undefined) updateData.note = note;
+      
+      await auditDoc.ref.update(updateData);
+
+      // Update associated inventory movements' dates as well
+      if (auditDateISO) {
+        const movesSnap = await db.collection(COL.INVENTORY_MOVEMENTS).get();
+        const batch = db.batch();
+        let updatedMovesCount = 0;
+        
+        for (const doc of movesSnap.docs) {
+          const m = doc.data();
+          const matchId = m.auditId || (m.documentId && m.documentId.startsWith("Auditoría ") ? m.documentId.replace("Auditoría ", "").trim() : "");
+          if (matchId === auditId || m.documentId === `Auditoría ${auditId}`) {
+            batch.update(doc.ref, { date: auditDateISO });
+            updatedMovesCount++;
+          }
+        }
+        
+        if (updatedMovesCount > 0) {
+          await batch.commit();
+        }
+      }
+
+      invalidateCache("audits");
+      invalidateCache("movements");
+      
+      res.json({ success: true, message: "Auditoría actualizada correctamente." });
+    } catch (err: any) {
+      handleFirestoreError(res, err, OperationType.UPDATE, COL.AUDITS);
     }
   });
 
@@ -2542,20 +2668,43 @@ async function startServer() {
         purchaseDateStr = new Date().toISOString().split("T")[0];
       }
 
-      // Get active Caja to link
-      let activeCajaId = null;
+      // Smart query to find target Caja based on purchase date (purchaseDateStr)
+      let targetCajaId: string | null = null;
+      let targetIsHistory = false;
+      let hasAnyOpenCaja = false;
+
       try {
-        const cajaRef = db.collection(COL.CAJA_ACTIVE).doc("current");
-        const cajaDoc = await cajaRef.get();
-        if (cajaDoc.exists) {
-            activeCajaId = (cajaDoc.data() as any).id;
+        // A. Check if there is an active/open caja right now
+        const activeCajaDoc = await db.collection(COL.CAJA_ACTIVE).doc("current").get();
+        if (activeCajaDoc.exists) {
+          hasAnyOpenCaja = true;
+          const activeCajaData = activeCajaDoc.data() || {};
+          if (activeCajaData.dateStr === purchaseDateStr) {
+            targetCajaId = activeCajaData.id;
+            targetIsHistory = false;
+          }
+        }
+
+        // B. If no match in active, check historic boxes matching this purchaseDateStr
+        if (!targetCajaId) {
+          const historySnap = await db.collection(COL.CAJA_HISTORY).where("dateStr", "==", purchaseDateStr).get();
+          if (historySnap && historySnap.docs && historySnap.docs.length > 0) {
+            targetCajaId = historySnap.docs[0].id;
+            targetIsHistory = true;
+          }
+        }
+
+        // C. If still no match but we have an open active caja, fall back to it
+        if (!targetCajaId && activeCajaDoc.exists) {
+          targetCajaId = (activeCajaDoc.data() as any).id;
+          targetIsHistory = false;
         }
       } catch (err) {
-        console.error("Error retrieving active caja for linkage:", err);
+        console.error("Error retrieving target caja for linkage:", err);
       }
 
       const affectsCaja = req.body.affectsCaja !== false;
-      if (affectsCaja && !activeCajaId) {
+      if (affectsCaja && !hasAnyOpenCaja && !targetCajaId) {
         return res.status(400).json({ error: "No existe una caja abierta para registrar el egreso. Por favor, abre una caja o desmarca la opción 'Afecta Caja Diaria'." });
       }
 
@@ -2564,16 +2713,20 @@ async function startServer() {
         providerName: req.body.providerName || "S/P",
         invoiceDate: req.body.invoiceDate || "",
         invoiceNumber: req.body.invoiceNumber || "S/N",
-        cajaId: activeCajaId,
+        cajaId: affectsCaja ? targetCajaId : null,
         date: purchaseDate,
-        operationDate: operationDateStr,
+        operationDate: affectsCaja ? operationDateStr : null,
         purchaseDate: purchaseDateStr,
         items: req.body.items || [],
         total: Number(req.body.total) || 0,
         paidAmount: Number(req.body.paidAmount) || 0,
-        affectsCaja: req.body.affectsCaja !== false,
+        affectsCaja: affectsCaja,
         updateStock: req.body.updateStock !== false,
-        updateCost: req.body.updateCost !== false
+        updateCost: req.body.updateCost !== false,
+        accountId: req.body.accountId || "",
+        subaccountId: req.body.subaccountId || "",
+        account: req.body.account || "",
+        subaccountLabel: req.body.subaccountLabel || ""
       };
 
       const newDoc = sanitizeForFirestore({
@@ -2603,24 +2756,124 @@ async function startServer() {
         }
       }
 
-      // 2. Add entry to Caja Active (Otros Egresos) if affectsCaja is true and paidAmount > 0
-      if (payload.affectsCaja && payload.paidAmount > 0) {
-        const cajaRef = db.collection(COL.CAJA_ACTIVE).doc("current");
-        const cajaDoc = await cajaRef.get();
-        if (cajaDoc.exists) {
-          const cajaData = cajaDoc.data();
-          const egresos = cajaData.otrosEgresos || [];
-          const newEgreso = {
-            id: "purch_" + ref.id,
-            quantity: 1,
-            account: "Compra de mercadería",
-            description: `${payload.providerName} - Comp. ${payload.invoiceNumber}`,
-            amount: payload.paidAmount,
+      // 2. Add entry to Caja (Otros Egresos) if affectsCaja is true and paidAmount > 0 and a box was identified
+      if (payload.affectsCaja && payload.paidAmount > 0 && targetCajaId) {
+        try {
+          const cajaRef = targetIsHistory
+            ? db.collection(COL.CAJA_HISTORY).doc(targetCajaId)
+            : db.collection(COL.CAJA_ACTIVE).doc("current");
+
+          const cajaDoc = await cajaRef.get();
+          if (cajaDoc.exists) {
+            const cajaData = cajaDoc.data() || {};
+            const egresos = cajaData.otrosEgresos || [];
+            
+            // Avoid duplicate registration check
+            if (!egresos.some((e: any) => e.purchaseId === ref.id)) {
+              const newEgreso = {
+                id: "purch_" + ref.id,
+                quantity: 1,
+                accountId: payload.accountId,
+                subaccountId: payload.subaccountId,
+                description: `${payload.providerName} - Comp. ${payload.invoiceNumber}`,
+                amount: payload.paidAmount,
+                purchaseId: ref.id
+              };
+              await cajaRef.update({
+                otrosEgresos: [...egresos, newEgreso]
+              });
+              if (targetIsHistory) {
+                invalidateCache("caja_history");
+              } else {
+                invalidateCache("caja_active");
+              }
+            }
+          }
+        } catch (cajaErr) {
+          console.error("Failed adding purchase to target caja:", cajaErr);
+        }
+      } else if (!payload.affectsCaja && payload.paidAmount > 0) {
+        try {
+          const ledgerRef = db.collection(COL.LEDGER_MANUAL).doc("purch_ledg_" + ref.id);
+          
+          let accountLabel = payload.account;
+          let subaccountLabel = payload.subaccountLabel;
+
+          if (!accountLabel) {
+            // Try parsing from ID like pillarId_label_timestamp
+            if (payload.accountId && payload.accountId.includes("_")) {
+              const parts = payload.accountId.split("_");
+              if (parts.length >= 2) {
+                accountLabel = parts[1];
+              }
+            }
+          }
+          if (!subaccountLabel) {
+            // Try parsing from ID like accountId_label_timestamp
+            if (payload.subaccountId && payload.subaccountId.includes("_")) {
+              const parts = payload.subaccountId.split("_");
+              if (parts.length >= 2) {
+                subaccountLabel = parts[parts.length - 2];
+              }
+            }
+          }
+
+          // Fetch from Firestore settings as absolute final fallback lookup
+          if (!accountLabel || !subaccountLabel) {
+            try {
+              const doc = await db.collection("settings").doc("chart_of_accounts").get();
+              if (doc.exists) {
+                const accounts = doc.data()?.accounts || [];
+                const matchedAcc = accounts.find((a: any) => a.id === payload.accountId);
+                if (matchedAcc) {
+                  if (!accountLabel) accountLabel = matchedAcc.label;
+                  if (!subaccountLabel) {
+                    const matchedSub = matchedAcc.subaccounts?.find((s: any) => s.id === payload.subaccountId);
+                    if (matchedSub) {
+                      subaccountLabel = matchedSub.label;
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.error("Error fetching account labels for ledger manual sync:", err);
+            }
+          }
+
+          if (!accountLabel) {
+            accountLabel = payload.accountId || "Compras Buffet";
+          }
+          if (!subaccountLabel) {
+            subaccountLabel = payload.subaccountId || "Proveedores";
+          }
+
+          let imputed = "";
+          try {
+            const dateObj = new Date(purchaseDateStr + "T12:00:00");
+            const monthName = dateObj.toLocaleString("es-ES", { month: "long" });
+            imputed = monthName[0].toUpperCase() + monthName.substring(1) + " " + dateObj.getFullYear();
+          } catch {
+            imputed = "";
+          }
+
+          const newEntry = {
+            id: "purch_ledg_" + ref.id,
+            date: purchaseDateStr,
+            periodoImputado: imputed,
+            origin: "Fondo Administrador",
+            type: "Egreso",
+            account: accountLabel,
+            subaccount: subaccountLabel,
+            description: `${payload.providerName} - Comp. ${payload.invoiceNumber} (Fondo Propio)`,
+            debe: 0,
+            haber: payload.paidAmount,
+            isSystem: true,
             purchaseId: ref.id
           };
-          await cajaRef.update({
-            otrosEgresos: [...egresos, newEgreso]
-          });
+
+          await ledgerRef.set(sanitizeForFirestore(newEntry));
+        } catch (ledgErr) {
+          console.error("Failed adding purchase to ledger-manual:", ledgErr);
         }
       }
 
@@ -2645,8 +2898,8 @@ async function startServer() {
                 await moveDocRef.set(sanitizeForFirestore({
                   id: moveDocRef.id,
                   itemId: item.stock_item_id,
-                  date: operationDateStr + "T12:00:00.000Z", // Use operationDate in Kardex
-                  operationDate: operationDateStr,
+                  date: purchaseDateStr + "T12:00:00.000Z", // Use purchase invoice date in Kardex as requested
+                  operationDate: purchaseDateStr,
                   purchaseDate: purchaseDateStr,
                   type: "COMPRA",
                   quantity: qtyAdded,
@@ -2692,6 +2945,22 @@ async function startServer() {
 
       const purchaseData = purchaseDoc.data() as any;
 
+      // Ensure the associated caja is open (if it affects caja and has cajaId)
+      const affectsCaja = purchaseData.affectsCaja !== false;
+      if (affectsCaja && purchaseData.cajaId) {
+        const activeCajaDoc = await db.collection(COL.CAJA_ACTIVE).doc("current").get();
+        let isActive = false;
+        if (activeCajaDoc.exists) {
+          const activeCajaData = activeCajaDoc.data() || {};
+          if (activeCajaData.id === purchaseData.cajaId) {
+            isActive = true;
+          }
+        }
+        if (!isActive) {
+          return res.status(400).json({ error: "No se puede eliminar la compra porque la caja a la que está vinculada ya se encuentra cerrada." });
+        }
+      }
+
       // 1. Revert stock dynamically (no-op since movements deletion does this)
       // 2. Delete inventory movements associated with this purchase
       // The documentId in movements is req.body.invoiceNumber or ref.id.
@@ -2728,6 +2997,113 @@ async function startServer() {
           });
           invalidateCache("providers");
         }
+      }
+
+      // Revert Daily Caja expenses (otrosEgresos) in active or historic sessions
+      try {
+        // 1. Try to find and revert in Active Caja
+        const activeCajaRef = db.collection(COL.CAJA_ACTIVE).doc("current");
+        const activeCajaDoc = await activeCajaRef.get();
+        if (activeCajaDoc.exists) {
+          const cData = activeCajaDoc.data() || {};
+          const egresos = cData.otrosEgresos || [];
+          const filtered = egresos.filter((e: any) => e.purchaseId !== purchaseId);
+          if (egresos.length !== filtered.length) {
+            await activeCajaRef.update({ otrosEgresos: filtered });
+            invalidateCache("caja_active");
+          }
+        }
+
+        // 2. Try to find and revert in Historic Caja sessions
+        if (purchaseData?.cajaId) {
+          const closedCajaRef = db.collection(COL.CAJA_HISTORY).doc(purchaseData.cajaId);
+          const closedCajaDoc = await closedCajaRef.get();
+          if (closedCajaDoc.exists) {
+            const cData = closedCajaDoc.data() || {};
+            const egresos = cData.otrosEgresos || [];
+            const filtered = egresos.filter((e: any) => e.purchaseId !== purchaseId);
+            if (egresos.length !== filtered.length) {
+              await closedCajaRef.update({ otrosEgresos: filtered });
+              invalidateCache("caja_history");
+            }
+          }
+        } else {
+          // Fallback: search all closed history boxes for an egreso matching purchaseId
+          const matchingHistorySnap = await db.collection(COL.CAJA_HISTORY).get();
+          for (const doc of matchingHistorySnap.docs) {
+            const cData = doc.data() || {};
+            const egresos = cData.otrosEgresos || [];
+            const filtered = egresos.filter((e: any) => e.purchaseId !== purchaseId);
+            if (egresos.length !== filtered.length) {
+              await doc.ref.update({ otrosEgresos: filtered });
+              invalidateCache("caja_history");
+            }
+          }
+        }
+      } catch (cajaErr) {
+        console.error("Error reverting caja other expenses for deleted purchase:", cajaErr);
+      }
+
+      // Revert cost price (purchase_price) for purchased items
+      try {
+        if (purchaseData.updateCost !== false && purchaseData.items && Array.isArray(purchaseData.items)) {
+          console.log("[DELETE PURCHASE] Reverting purchase_price for items...");
+          // Extract unique item IDs that were modified by this purchase
+          const stockItemIds = Array.from(new Set(
+            purchaseData.items
+              .map((item: any) => item.stock_item_id)
+              .filter(Boolean)
+          )) as string[];
+
+          if (stockItemIds.length > 0) {
+            // Get all other purchases to find the previous cost price
+            const allPurchasesSnap = await db.collection(COL.PURCHASES).get();
+            const otherPurchases = allPurchasesSnap.docs
+              .map(d => ({ id: d.id, ...d.data() } as any))
+              .filter(p => p.id !== purchaseId);
+
+            for (const itemId of stockItemIds) {
+              const relevantPurchases = otherPurchases.filter(p => 
+                (p.items || []).some((it: any) => it.stock_item_id === itemId && it.unit_cost !== undefined)
+              );
+
+              // Sort descending by date/purchaseDate
+              relevantPurchases.sort((a, b) => {
+                const dateA = a.date || a.purchaseDate || "";
+                const dateB = b.date || b.purchaseDate || "";
+                return dateB.localeCompare(dateA);
+              });
+
+              if (relevantPurchases.length > 0) {
+                const mostRecentPurchase = relevantPurchases[0];
+                const prevItem = (mostRecentPurchase.items || []).find((it: any) => it.stock_item_id === itemId);
+                const prevCost = prevItem ? (Number(prevItem.unit_cost) || 0) : 0;
+                console.log(`[ROLLBACK COST] Item ${itemId}: Rolling back cost price from current to ${prevCost} based on other purchase ID ${mostRecentPurchase.id}`);
+                
+                // Update stock with the rolled back cost
+                const stockRef = db.collection(COL.STOCK).doc(itemId);
+                const sDoc = await stockRef.get();
+                if (sDoc.exists) {
+                  await stockRef.update({
+                    purchase_price: prevCost,
+                    last_updated: new Date().toISOString()
+                  });
+                }
+              } else {
+                console.log(`[ROLLBACK COST] Item ${itemId}: No other purchases found. Keeping its current cost price intact.`);
+              }
+            }
+          }
+        }
+      } catch (costErr) {
+        console.error("Error reverting item cost prices for deleted purchase:", costErr);
+      }
+
+      // 2.5 Delete direct ledger entry if it was registered directly
+      try {
+        await db.collection(COL.LEDGER_MANUAL).doc("purch_ledg_" + purchaseId).delete();
+      } catch (ledgErr) {
+        console.error("Error deleting direct ledger entry for purchase:", ledgErr);
       }
 
       // 3. Delete the purchase document
@@ -3046,6 +3422,49 @@ async function startServer() {
     }
   });
 
+  app.post("/api/caja/reopen", authenticate, async (req, res) => {
+    try {
+      const { dateStr } = req.body;
+      if (!dateStr) {
+        return res.status(400).json({ error: "dateStr is required" });
+      }
+
+      console.log(`[REOPEN-CAJA] Request received to reopen caja for date: ${dateStr}`);
+
+      // 1. Find matching document in caja_history
+      const historySnapshot = await db.collection(COL.CAJA_HISTORY).where("dateStr", "==", dateStr).get();
+      if (historySnapshot.empty) {
+        return res.status(404).json({ error: `No se encontró ninguna caja cerrada para la fecha ${dateStr}` });
+      }
+
+      const historyDoc = historySnapshot.docs[0];
+      const historyData = historyDoc.data();
+
+      // 2. Prepare reopened session data
+      const reopenedSession = {
+        ...historyData,
+        isClosed: false,
+        isOpen: true
+      };
+
+      // 3. Write to active box as "current"
+      await db.collection(COL.CAJA_ACTIVE).doc("current").set(reopenedSession);
+
+      // 4. Delete from caja_history
+      await db.collection(COL.CAJA_HISTORY).doc(historyDoc.id).delete();
+
+      // 5. Invalidate cache
+      invalidateCache("caja_active");
+      invalidateCache("caja_history");
+
+      console.log(`[REOPEN-CAJA] Successfully reopened caja for date: ${dateStr}, Session ID: ${historyDoc.id}`);
+      res.json({ success: true, session: reopenedSession });
+    } catch (err: any) {
+      console.error("Error in POST /api/caja/reopen:", err);
+      res.status(500).json({ error: "Error al reabrir la caja: " + (err.message || err) });
+    }
+  });
+
   app.get("/api/caja/tarifas", authenticate, async (req, res) => {
     try {
       const doc = await db.collection(COL.CAJA_TARIFAS).doc("config").get();
@@ -3264,6 +3683,27 @@ async function startServer() {
     }
   });
 
+  app.delete("/api/budgets/clear/:month", authenticate, async (req, res) => {
+    try {
+      const { month } = req.params;
+      if (!month) {
+        return res.status(400).json({ error: "Mes requerido" });
+      }
+
+      const snapshot = await db.collection(COL.BUDGETS).where("monthStr", "==", month).get();
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+
+      res.json({ success: true, count: snapshot.docs.length });
+    } catch (err: any) {
+      console.error("Error clearing budget month:", err);
+      res.status(500).json({ error: "Error al vaciar presupuesto del mes: " + (err.message || err) });
+    }
+  });
+
   // LEDGER MANUAL ENDPOINTS
   app.get("/api/ledger-manual", authenticate, async (req, res) => {
     try {
@@ -3313,6 +3753,35 @@ async function startServer() {
     } catch (err: any) {
       console.error("Error in DELETE /api/ledger-manual:", err);
       res.status(500).json({ error: "Error eliminando asiento libro: " + (err.message || err) });
+    }
+  });
+
+  app.put("/api/ledger-manual/:id", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const entry = req.body;
+      const ref = db.collection(COL.LEDGER_MANUAL).doc(id);
+
+      const payload = {
+        id,
+        date: entry.date || new Date().toISOString().split("T")[0],
+        periodoImputado: entry.periodoImputado || "",
+        origin: entry.origin || "Administrador",
+        type: entry.type || "Egreso",
+        account: entry.account || "",
+        subaccount: entry.subaccount || "",
+        description: entry.description || "",
+        debe: Number(entry.debe) || 0,
+        haber: Number(entry.haber) || 0,
+        linkedBudgetId: entry.linkedBudgetId || "",
+        isSystem: !!entry.isSystem
+      };
+
+      await ref.set(payload);
+      res.json(payload);
+    } catch (err: any) {
+      console.error("Error in PUT /api/ledger-manual:", err);
+      res.status(500).json({ error: "Error editando asiento libro: " + (err.message || err) });
     }
   });
 
@@ -3528,6 +3997,97 @@ async function startServer() {
       await backfillKardex();
       await adjustInitialDate();
       await selfHealSalesDates().catch(err => console.error("selfHealSalesDates failed", err));
+
+      // Reconcile and fix closed box session cash discrepancy for day 17
+      await (async () => {
+        try {
+          console.log("[FIX-DAY-17] Running cash reconciliation self-healing routine...");
+          const historySnapshot = await db.collection(COL.CAJA_HISTORY).get();
+          if (historySnapshot.empty) {
+            console.log("[FIX-DAY-17] No history found.");
+            return;
+          }
+          const salesSnapshot = await db.collection(COL.SALES).get();
+          const sales = salesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+          for (const doc of historySnapshot.docs) {
+            const session: any = doc.data();
+            if (!session) continue;
+            
+            const dateStr = session.dateStr || "";
+            // Check if it's day 17 (e.g., contains "17")
+            const isDay17 = dateStr.includes("17");
+            
+            if (isDay17) {
+              console.log(`[FIX-DAY-17] Found matching session for Day 17! ID: ${session.id}, dateStr: ${dateStr}`);
+              const subtotalCancha1 = (session.cancha1 || []).reduce((sum: number, slot: any) => sum + (Number(slot.amount) || 0), 0);
+              const subtotalCancha2 = (session.cancha2 || []).reduce((sum: number, slot: any) => sum + (Number(slot.amount) || 0), 0);
+              
+              // Filter sales for this session
+              const sessionSales = sales.filter((sale: any) => {
+                if (sale.cajaSessionId && sale.cajaSessionId === session.id) return true;
+                try {
+                  const saleDate = sale.date ? sale.date.substring(0, 10) : "";
+                  const sessDate = dateStr.substring(0, 10);
+                  return saleDate === sessDate && saleDate !== "";
+                } catch {
+                  return false;
+                }
+              });
+              
+              const histBarSalesOnly = sessionSales.filter((s: any) => {
+                if (s.origin === "mesa" || s.origin === "sistema_caja") return false;
+                const sysLabels = ["Cancha 1", "Cancha 2", "Otros Ingresos", "Otros Egresos", "Personal Egreso"];
+                if (sysLabels.includes(s.table_number || "")) return false;
+                return true;
+              });
+              
+              const histBarSalesTotal = histBarSalesOnly.reduce((acc: number, sale: any) => acc + (Number(sale.total) || 0), 0);
+              const histTotalOtrosIncomes = histBarSalesTotal + (session.otrosIngresos || []).reduce((sum: number, r: any) => sum + ((r.quantity || 1) * (Number(r.amount) || 0)), 0);
+              const histTotalEgresos = (session.personalAmount || 0) + (session.otrosEgresos || []).reduce((sum: number, r: any) => sum + ((r.quantity || 1) * (Number(r.amount) || 0)), 0);
+              
+              const histTheoreticalToSurrender = Number(session.saldoInicial || 0) + subtotalCancha1 + subtotalCancha2 + histTotalOtrosIncomes - histTotalEgresos;
+              
+              const currentEfectivo = Number(session.rendicionEfectivo || 0);
+              const currentTransferencia = Number(session.rendicionTransferencia || 0);
+              const currentTarjetas = Number(session.rendicionTarjetas || 0);
+              
+              // We want difference = 0, which means:
+              // rendicionEfectivo + Transferencia + Tarjetas = histTheoreticalToSurrender
+              const targetRendicionEfectivo = histTheoreticalToSurrender - currentTransferencia - currentTarjetas;
+              
+              console.log(`[FIX-DAY-17] Theoretical Total: ${histTheoreticalToSurrender}, Transfer: ${currentTransferencia}, Card: ${currentTarjetas}`);
+              console.log(`[FIX-DAY-17] Changing rendicionEfectivo from ${currentEfectivo} to target: ${targetRendicionEfectivo}`);
+              
+              // Generate matching billCounts
+              const billCounts: Record<string, number> = {};
+              let remaining = Math.max(0, targetRendicionEfectivo);
+              const denoms = [2000, 1000, 500, 200, 100, 50, 20, 10];
+              for (const d of denoms) {
+                if (remaining >= d) {
+                  const count = Math.floor(remaining / d);
+                  billCounts[d.toString()] = count;
+                  remaining = remaining % d;
+                }
+              }
+              if (remaining > 0) {
+                billCounts["10"] = (billCounts["10"] || 0) + Math.ceil(remaining / 10);
+              }
+              
+              await doc.ref.update({
+                rendicionEfectivo: targetRendicionEfectivo,
+                billCounts: billCounts
+              });
+              
+              console.log(`[FIX-DAY-17] Successfully self-healed session ${session.id}!`);
+            }
+          }
+          invalidateCache("caja_history");
+          invalidateCache("caja_active");
+        } catch (err: any) {
+          console.error("[FIX-DAY-17] Error running day 17 fix:", err.message);
+        }
+      })();
     } catch (e: any) {
       logToFile(`Health Check FATAL: ${e.message}`);
       console.error("[FIREBASE] Health Check failed:", e.message);

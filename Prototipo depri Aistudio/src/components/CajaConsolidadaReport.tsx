@@ -229,7 +229,10 @@ export const CajaConsolidadaReport: React.FC<CajaConsolidadaReportProps> = ({ sa
     const barTotal = sSales.reduce((acc, sale) => acc + (Number(sale.total) || 0), 0);
     const barQty = sSales.reduce((acc, sale) => acc + (sale.items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0), 0);
 
-    const otrosIngresosTotal = (sess.otrosIngresos || []).reduce((sum, r) => sum + ((Number(r.quantity) || 1) * (Number(r.amount) || 0)), 0);
+    const otrosIngresosTotal = (sess.otrosIngresos || []).reduce((sum, r) => {
+      if (r.id === "buffet") return sum;
+      return sum + ((Number(r.quantity) || 1) * (Number(r.amount) || 0));
+    }, 0);
     const totalIncomes = barTotal + otrosIngresosTotal;
 
     const personalExp = Number(sess.personalAmount) || 0;
@@ -319,6 +322,7 @@ export const CajaConsolidadaReport: React.FC<CajaConsolidadaReportProps> = ({ sa
       // Accumulate Manual Otros Ingresos
       if (Array.isArray(box.otrosIngresos)) {
         box.otrosIngresos.forEach(item => {
+          if (item.id === "buffet") return;
           const key = `${item.account || "Ingreso"}-${item.description || "General"}`;
           if (!otrosIngresosGrouped[key]) {
             otrosIngresosGrouped[key] = {

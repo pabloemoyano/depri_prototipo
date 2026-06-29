@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { motion } from "motion/react";
 import { 
   PiggyBank, 
   ChevronRight, 
+  ChevronDown,
   Plus, 
   Trash2, 
   Copy, 
@@ -17,7 +19,7 @@ import {
 import { CustomDropdown } from "./CustomDropdown";
 // @ts-ignore
 import deprimeraLogo from "../assets/images/deprimera_logo_1780923105846.png";
-import { getUnifiedAccounts, getUnifiedSubaccounts, saveUnifiedAccounts, saveUnifiedSubaccounts, Account, getUnifiedPlan, fetchMasterPlanFromServer, pushMasterPlanToServer } from "../lib/accountManager";
+import { getUnifiedAccounts, getUnifiedSubaccounts, saveUnifiedAccounts, saveUnifiedSubaccounts, Account, getUnifiedPlan, fetchMasterPlanFromServer, pushMasterPlanToServer, getAccountLabel, getSubaccountLabel } from "../lib/accountManager";
 
 interface Budget {
   id: string;
@@ -50,15 +52,19 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "matrix">("list");
+  const [viewMode, setViewMode] = useState<"list" | "matrix" | "timeline">("list");
   const [filterState, setFilterState] = useState<"Todos" | "Pagados" | "Pendientes">("Todos");
   const [selectedMonth, setSelectedMonth] = useState("Junio 2026");
+  const [groupSubaccounts, setGroupSubaccounts] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   // Add form fields
   const [addFormOpen, setAddFormOpen] = useState(false);
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const [copyConfirmationOpen, setCopyConfirmationOpen] = useState(false);
+  const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [auditItem, setAuditItem] = useState<{ budget: any; payments: LedgerItem[] } | null>(null);
   const [newCategory, setNewCategory] = useState("Servicios");
   const [newSubaccountVal, setNewSubaccountInner] = useState("");
@@ -81,17 +87,6 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
   const [newDueDate, setNewDueDate] = useState("");
   const [typedCategory, setTypedCategory] = useState("");
   const [typedSubaccount, setTypedSubaccount] = useState("");
-
-  // Helper to get label for account id
-  const getAccountLabel = (id: string) => {
-    return getUnifiedAccounts().find(a => a.id === id)?.label || id;
-  };
-
-  // Helper to get label for subaccount id
-  const getSubaccountLabel = (accountId: string, subId: string) => {
-    const subs = getUnifiedSubaccounts(accountId);
-    return subs.find(s => s.id === subId)?.label || subId;
-  };
 
   // Helper to get last day of month
   const getLastDayOfMonth = (monthYear: string) => {
@@ -179,50 +174,133 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
             <tbody class="divide-y divide-slate-100 font-medium">
       `;
 
-      if (filteredExecution.length === 0) {
-        html += `
-          <tr>
-            <td colSpan="7" class="p-8 text-center text-slate-400 text-xs font-mono uppercase">
-              No hay partidas presupuestarias creadas para ${selectedMonth}.
-            </td>
-          </tr>
-        `;
-      } else {
-        filteredExecution.forEach(b => {
-          const isPaid = b.state === "Pagado";
-          const isPartial = b.state === "Parcialmente Pagado";
-          const stateBg = isPaid 
-            ? "bg-emerald-100/50 text-emerald-800 border-emerald-300" 
-            : isPartial
-            ? "bg-amber-100/50 text-amber-800 border-amber-300"
-            : "bg-rose-100 text-rose-800 border-rose-300";
-
-          const rowBg = isPaid 
-            ? "bg-emerald-50/20 text-emerald-950/60" 
-            : isPartial
-            ? "bg-amber-50/10 text-amber-950"
-            : "bg-rose-50/20 text-rose-950";
-
+      if (groupSubaccounts) {
+        if (groupedExecution.length === 0) {
           html += `
-            <tr class="${rowBg}">
-              <td class="p-3 pl-4 font-bold border-r border-slate-100/50 ${isPaid ? "text-slate-400" : "text-slate-900"}">${getAccountLabel(b.category)}</td>
-              <td class="p-3 font-semibold border-r border-slate-100/50 ${isPaid ? "text-slate-400 font-normal" : "text-slate-800"}">${getSubaccountLabel(b.category, b.subaccount)}</td>
-              <td class="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100/50">${formatDateSafe(b.dueDate)}</td>
-              <td class="p-3 text-right font-mono font-bold text-slate-800">$${b.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
-              <td class="p-3 text-right font-mono font-black text-emerald-700">$${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
-              <td class="p-3 text-right font-mono font-bold border-r border-slate-100/50">
-                <span class="${b.deviation >= 0 ? (isPaid ? "text-emerald-600/40" : "text-emerald-700") : "text-rose-700 font-black"}">
-                  ${b.deviation >= 0 ? "+" : ""}$${b.deviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
-                </span>
-              </td>
-              <td class="p-3 text-center">
-                <span class="px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider ${stateBg} whitespace-nowrap">
-                  ${b.state}
-                </span>
+            <tr>
+              <td colSpan="7" class="p-8 text-center text-slate-400 text-xs font-mono uppercase">
+                No hay partidas presupuestarias creadas para ${selectedMonth}.
               </td>
             </tr>
           `;
-        });
+        } else {
+          groupedExecution.forEach(g => {
+            const isExpanded = expandedCategories[g.category] !== false;
+            const stateBg = g.state === "Pagado"
+              ? "bg-emerald-100/50 text-emerald-800 border-emerald-300"
+              : g.state === "Parcialmente Pagado"
+              ? "bg-amber-100/50 text-amber-800 border-amber-300"
+              : "bg-rose-100 text-rose-800 border-rose-300";
+
+            html += `
+              <tr class="bg-slate-100/80 font-bold">
+                <td class="p-3 pl-4 font-black border-r border-slate-100/50 text-slate-900">
+                  📁 ${getAccountLabel(g.category)} (${g.subaccounts.length} sub.)
+                </td>
+                <td class="p-3 text-slate-400 font-mono text-[9.5px] uppercase font-bold border-r border-slate-100/50">Todas las subcuentas</td>
+                <td class="p-3 text-center font-mono text-[10px] text-slate-400 border-r border-slate-100/50">-</td>
+                <td class="p-3 text-right font-mono font-black text-slate-900">$${g.totalAmount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+                <td class="p-3 text-right font-mono font-black text-emerald-800 border-r border-slate-100/50">$${g.totalRealPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+                <td class="p-3 text-right font-mono font-black border-r border-slate-100/50">
+                  <span class="${g.totalDeviation >= 0 ? "text-emerald-700" : "text-rose-700"}">
+                    ${g.totalDeviation >= 0 ? "+" : ""}$${g.totalDeviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                  </span>
+                </td>
+                <td class="p-3 text-center">
+                  <span class="px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider ${stateBg} whitespace-nowrap">
+                    ${g.state}
+                  </span>
+                </td>
+              </tr>
+            `;
+
+            if (isExpanded) {
+              g.subaccounts.forEach(b => {
+                const isPaid = b.state === "Pagado";
+                const isPartial = b.state === "Parcialmente Pagado";
+                const childStateBg = isPaid 
+                  ? "bg-emerald-100/50 text-emerald-800 border-emerald-300" 
+                  : isPartial
+                  ? "bg-amber-100/50 text-amber-800 border-amber-300"
+                  : "bg-rose-100 text-rose-800 border-rose-300";
+
+                const childRowBg = isPaid 
+                  ? "bg-emerald-50/10 text-emerald-950/60" 
+                  : isPartial
+                  ? "bg-amber-50/5 text-amber-950"
+                  : "bg-rose-50/10 text-rose-950";
+
+                html += `
+                  <tr class="${childRowBg}">
+                    <td class="p-3 pl-8 border-r border-slate-100/50 text-slate-400 text-[10px]">
+                      &nbsp;&nbsp;└─ ${getAccountLabel(b.category)}
+                    </td>
+                    <td class="p-3 font-semibold border-r border-slate-100/50 ${isPaid ? "text-slate-400 font-normal" : "text-slate-800"}">${getSubaccountLabel(b.category, b.subaccount)}</td>
+                    <td class="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100/50">${formatDateSafe(b.dueDate)}</td>
+                    <td class="p-3 text-right font-mono font-bold text-slate-800">$${b.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+                    <td class="p-3 text-right font-mono font-black text-emerald-700">$${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+                    <td class="p-3 text-right font-mono font-bold border-r border-slate-100/50">
+                      <span class="${b.deviation >= 0 ? (isPaid ? "text-emerald-600/40" : "text-emerald-700") : "text-rose-700 font-black"}">
+                        ${b.deviation >= 0 ? "+" : ""}$${b.deviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td class="p-3 text-center">
+                      <span class="px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider ${childStateBg} whitespace-nowrap">
+                        ${b.state}
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              });
+            }
+          });
+        }
+      } else {
+        if (filteredExecution.length === 0) {
+          html += `
+            <tr>
+              <td colSpan="7" class="p-8 text-center text-slate-400 text-xs font-mono uppercase">
+                No hay partidas presupuestarias creadas para ${selectedMonth}.
+              </td>
+            </tr>
+          `;
+        } else {
+          filteredExecution.forEach(b => {
+            const isPaid = b.state === "Pagado";
+            const isPartial = b.state === "Parcialmente Pagado";
+            const stateBg = isPaid 
+              ? "bg-emerald-100/50 text-emerald-800 border-emerald-300" 
+              : isPartial
+              ? "bg-amber-100/50 text-amber-800 border-amber-300"
+              : "bg-rose-100 text-rose-800 border-rose-300";
+
+            const rowBg = isPaid 
+              ? "bg-emerald-50/20 text-emerald-950/60" 
+              : isPartial
+              ? "bg-amber-50/10 text-amber-950"
+              : "bg-rose-50/20 text-rose-950";
+
+            html += `
+              <tr class="${rowBg}">
+                <td class="p-3 pl-4 font-bold border-r border-slate-100/50 ${isPaid ? "text-slate-400" : "text-slate-900"}">${getAccountLabel(b.category)}</td>
+                <td class="p-3 font-semibold border-r border-slate-100/50 ${isPaid ? "text-slate-400 font-normal" : "text-slate-800"}">${getSubaccountLabel(b.category, b.subaccount)}</td>
+                <td class="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100/50">${formatDateSafe(b.dueDate)}</td>
+                <td class="p-3 text-right font-mono font-bold text-slate-800">$${b.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+                <td class="p-3 text-right font-mono font-black text-emerald-700">$${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+                <td class="p-3 text-right font-mono font-bold border-r border-slate-100/50">
+                  <span class="${b.deviation >= 0 ? (isPaid ? "text-emerald-600/40" : "text-emerald-700") : "text-rose-700 font-black"}">
+                    ${b.deviation >= 0 ? "+" : ""}$${b.deviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                  </span>
+                </td>
+                <td class="p-3 text-center">
+                  <span class="px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider ${stateBg} whitespace-nowrap">
+                    ${b.state}
+                  </span>
+                </td>
+              </tr>
+            `;
+          });
+        }
       }
 
       html += `
@@ -230,6 +308,57 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
           </table>
         </div>
       `;
+
+      if (unbudgetedExpenses.length > 0) {
+        html += `
+          <div class="mt-8">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-xs font-black uppercase text-amber-800 tracking-wider">Egresos No Presupuestados (Desvíos Adicionales)</h3>
+              <span class="text-[10px] font-black font-mono bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">
+                TOTAL: $${totalUnbudgeted.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-3xs">
+              <table class="w-full text-left text-[11px] border-collapse">
+                <thead>
+                  <tr class="bg-amber-700 text-white uppercase tracking-wider text-[9px] font-black">
+                    <th class="p-3 pl-4">Categoría Principal (Cuenta)</th>
+                    <th class="p-3">Concepto/Detalle (Subcuenta)</th>
+                    <th class="p-3 text-center">Registros</th>
+                    <th class="p-3 text-right">Límite Estimado ($)</th>
+                    <th class="p-3 text-right">Outlays Reales No Planificados ($)</th>
+                    <th class="p-3 text-right">Delta / Desvío ($)</th>
+                    <th class="p-3 text-center">Estado del Obligado</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-150 font-medium">
+        `;
+
+        unbudgetedExpenses.forEach(e => {
+          html += `
+            <tr class="bg-amber-50/10">
+              <td class="p-3 pl-4 font-bold border-r border-slate-100 text-slate-900">${e.account}</td>
+              <td class="p-3 font-semibold border-r border-slate-100 text-slate-800">${e.subaccount}</td>
+              <td class="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100">${e.items.length} mov.</td>
+              <td class="p-3 text-right font-mono font-bold text-slate-400 border-r border-slate-100">$0,00</td>
+              <td class="p-3 text-right font-mono font-black text-rose-700 border-r border-slate-100">$${e.spent.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+              <td class="p-3 text-right font-mono font-bold border-r border-slate-100 text-rose-700 font-black">-$${e.spent.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</td>
+              <td class="p-3 text-center">
+                <span class="px-2.5 py-0.5 border border-rose-300 bg-rose-50 text-rose-700 rounded-full text-[9px] font-black uppercase tracking-wider whitespace-nowrap">
+                  No Planificado
+                </span>
+              </td>
+            </tr>
+          `;
+        });
+
+        html += `
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
     } else {
       // Matrix / Gantt view
       const uniqueDates = Array.from<string>(new Set(filteredExecution.map(b => (b.dueDate || "S/F") as string))).sort((a: string, b: string) => {
@@ -685,6 +814,74 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
   const totalPaidReal = useMemo(() => budgetExecution.reduce((sum, b) => sum + b.realPaid, 0), [budgetExecution]);
   const totalPending = useMemo(() => budgetExecution.reduce((sum, b) => sum + (b.state !== "Pagado" ? b.amount - b.realPaid : 0), 0), [budgetExecution]);
 
+  // Aggregate expenditures that do NOT match any budget entry (excluding merchandise purchases)
+  const unbudgetedExpenses = useMemo(() => {
+    const map: Record<string, { account: string; subaccount: string; spent: number; items: LedgerItem[] }> = {};
+    
+    ledger.forEach(l => {
+      if (l.periodoImputado !== selectedMonth) return;
+      
+      const acc = l.account || "Otros Egresos";
+      const sub = l.subaccount || "Egreso Extra";
+      
+      // Check if it is merchandise purchase
+      const accLower = acc.toLowerCase();
+      const subLower = sub.toLowerCase();
+      const isMerch = 
+        accLower.includes("compra de mercader") ||
+        accLower.includes("mercaderia") ||
+        accLower.includes("mercadería") ||
+        subLower.includes("compra de mercader") ||
+        subLower.includes("mercaderia") ||
+        subLower.includes("mercadería");
+        
+      if (isMerch) return;
+      
+      const spent = (Number(l.haber) || 0) - (Number(l.debe) || 0);
+      if (spent <= 0) return;
+      
+      // Check if matches budgeted item
+      const isBudg = activeBudgets.some(b => {
+        const categoryLabel = getAccountLabel(b.category).toLowerCase();
+        const subLabel = getSubaccountLabel(b.category, b.subaccount).toLowerCase();
+        
+        const accountMatch = 
+          acc.toLowerCase() === b.category.toLowerCase() || 
+          acc.toLowerCase() === categoryLabel;
+
+        const subMatch = 
+          sub.toLowerCase() === b.subaccount.toLowerCase() ||
+          sub.toLowerCase() === subLabel;
+
+        return accountMatch && subMatch;
+      });
+      
+      if (!isBudg) {
+        const key = `${acc.trim()}||${sub.trim()}`;
+        if (!map[key]) {
+          map[key] = {
+            account: acc,
+            subaccount: sub,
+            spent: 0,
+            items: []
+          };
+        }
+        map[key].spent += spent;
+        map[key].items.push(l);
+      }
+    });
+    
+    return Object.values(map).sort((a, b) => a.account.localeCompare(b.account) || a.subaccount.localeCompare(b.subaccount));
+  }, [ledger, activeBudgets, selectedMonth]);
+
+  const totalUnbudgeted = useMemo(() => {
+    return unbudgetedExpenses.reduce((sum, e) => sum + e.spent, 0);
+  }, [unbudgetedExpenses]);
+
+  const totalRealEgresadoCompleto = useMemo(() => {
+    return totalPaidReal + totalUnbudgeted;
+  }, [totalPaidReal, totalUnbudgeted]);
+
   // Handles adding budget
   const filteredExecution = useMemo(() => {
     if (filterState === "Todos") return budgetExecution;
@@ -692,6 +889,93 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
     if (filterState === "Pendientes") return budgetExecution.filter(b => b.state !== "Pagado");
     return budgetExecution;
   }, [budgetExecution, filterState]);
+
+  // Group filteredExecution by category when in grouped mode
+  const groupedExecution = useMemo(() => {
+    const map: Record<string, {
+      category: string;
+      subaccounts: typeof filteredExecution;
+      totalAmount: number;
+      totalRealPaid: number;
+      totalDeviation: number;
+      state: "Pendiente" | "Parcialmente Pagado" | "Pagado";
+    }> = {};
+
+    filteredExecution.forEach(item => {
+      const cat = item.category;
+      if (!map[cat]) {
+        map[cat] = {
+          category: cat,
+          subaccounts: [],
+          totalAmount: 0,
+          totalRealPaid: 0,
+          totalDeviation: 0,
+          state: "Pendiente"
+        };
+      }
+      map[cat].subaccounts.push(item);
+      map[cat].totalAmount += item.amount;
+      map[cat].totalRealPaid += item.realPaid;
+    });
+
+    return Object.values(map).map(g => {
+      const totalDeviation = g.totalAmount - g.totalRealPaid;
+      
+      // Classify consolidated state
+      const allPagado = g.subaccounts.every(s => s.state === "Pagado");
+      const allPendiente = g.subaccounts.every(s => s.state === "Pendiente");
+      let state: "Pendiente" | "Parcialmente Pagado" | "Pagado" = "Parcialmente Pagado";
+      if (allPagado) {
+        state = "Pagado";
+      } else if (allPendiente) {
+        state = "Pendiente";
+      }
+
+      return {
+        ...g,
+        totalDeviation,
+        state
+      };
+    }).sort((a, b) => getAccountLabel(a.category).localeCompare(getAccountLabel(b.category)));
+  }, [filteredExecution]);
+
+  // Aggregate monthly data for the 12-month timeline desvíos chart
+  const timelineData = useMemo(() => {
+    return monthOptions.map(m => {
+      const monthBudgets = budgets.filter(b => b.monthStr === m);
+      const totalBudget = monthBudgets.reduce((sum, b) => sum + b.amount, 0);
+
+      const totalSpent = ledger.reduce((sum, l) => {
+        if (l.periodoImputado !== m) return sum;
+        
+        const acc = l.account || "";
+        const sub = l.subaccount || "";
+        
+        const accLower = acc.toLowerCase();
+        const subLower = sub.toLowerCase();
+        const isMerch = 
+          accLower.includes("compra de mercader") ||
+          accLower.includes("mercaderia") ||
+          accLower.includes("mercadería") ||
+          subLower.includes("compra de mercader") ||
+          subLower.includes("mercaderia") ||
+          subLower.includes("mercadería");
+          
+        if (isMerch) return sum;
+
+        const spent = (Number(l.haber) || 0) - (Number(l.debe) || 0);
+        return sum + (spent > 0 ? spent : 0);
+      }, 0);
+
+      const deviation = totalBudget - totalSpent;
+      return {
+        monthStr: m,
+        budgeted: totalBudget,
+        spent: totalSpent,
+        deviation
+      };
+    });
+  }, [budgets, ledger, monthOptions]);
 
   // Totals based on filtered data (or keep global totals?)
   // The user didn't specify if totals should filter too, but usually it's better if they do.
@@ -936,6 +1220,27 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
     }
   };
 
+  const executeClearMonth = async () => {
+    setIsClearing(true);
+    try {
+      const res = await apiFetch(`/api/budgets/clear/${encodeURIComponent(selectedMonth)}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        alert(`Se han eliminado con éxito todas las partidas presupuestarias de ${selectedMonth}.`);
+        loadAll();
+      } else {
+        const err = await res.json();
+        alert("Error al vaciar presupuesto: " + (err.error || "Ocurrió un error"));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsClearing(false);
+      setClearConfirmationOpen(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 text-center space-y-3">
@@ -966,7 +1271,7 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
             PLANIFICACIÓN PERIODICA Y SEGUIMIENTO DE OBLIGACIONES ECONÓMICAS
           </p>
           
-          <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-100 mt-2 w-fit gap-1">
+          <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-100 mt-2 w-fit gap-1 flex-wrap">
             <button
               onClick={() => setViewMode("list")}
               className={`px-4 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
@@ -987,22 +1292,73 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
             >
               Gantt / Matriz
             </button>
+            <button
+              onClick={() => setViewMode("timeline")}
+              className={`px-4 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                viewMode === "timeline" 
+                ? "bg-white text-indigo-600 shadow-sm border border-slate-200" 
+                : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              Línea de Tiempo (Desvíos)
+            </button>
             
-            <div className="h-4 w-px bg-slate-200 self-center mx-1" />
-            
-            {(["Todos", "Pagados", "Pendientes"] as const).map(f => (
-              <button
-                key={f}
-                onClick={() => setFilterState(f)}
-                className={`px-4 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                  filterState === f 
-                  ? "bg-indigo-600 text-white shadow-sm border border-indigo-700" 
-                  : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                {f}
-              </button>
-            ))}
+            {viewMode !== "timeline" && (
+              <>
+                <div className="h-4 w-px bg-slate-200 self-center mx-1" />
+                {(["Todos", "Pagados", "Pendientes"] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setFilterState(f)}
+                    className={`px-4 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                      filterState === f 
+                      ? "bg-indigo-600 text-white shadow-sm border border-indigo-700" 
+                      : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+
+                {viewMode === "list" && (
+                  <>
+                    <div className="h-4 w-px bg-slate-200 self-center mx-2" />
+                    <button
+                      type="button"
+                      onClick={() => setGroupSubaccounts(false)}
+                      className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                        !groupSubaccounts 
+                        ? "bg-slate-800 text-white shadow-sm border border-slate-900" 
+                        : "text-slate-400 hover:text-slate-600"
+                      }`}
+                      title="Ver cuentas + subcuentas desagregadas"
+                    >
+                      Vista Plana
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupSubaccounts(true);
+                        // Expand all by default when enabling
+                        const initialExpanded: Record<string, boolean> = {};
+                        filteredExecution.forEach(b => {
+                          initialExpanded[b.category] = true;
+                        });
+                        setExpandedCategories(initialExpanded);
+                      }}
+                      className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                        groupSubaccounts 
+                        ? "bg-slate-800 text-white shadow-sm border border-slate-900" 
+                        : "text-slate-400 hover:text-slate-600"
+                      }`}
+                      title="Ver subcuentas agrupadas por cuenta (Colapsable)"
+                    >
+                      Vista Agrupada
+                    </button>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -1155,40 +1511,65 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
         </form>
       )}
 
-      {/* 3. Copiar Estructura Block */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-slate-200 text-slate-700 rounded-lg">
-            <Copy className="w-4 h-4" />
+      {/* 3. Herramientas de Planificación Block */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Copiar Estructura */}
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-slate-200 text-slate-700 rounded-lg">
+              <Copy className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-800">Duplicar presupuesto de otro mes</h4>
+              <p className="text-[10px] text-slate-500 font-mono">Copia partidas, cuentas y montos sin duplicar pagos ni ejecuciones.</p>
+            </div>
           </div>
-          <div>
-            <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-800">¿Deseas duplicar el plan del mes anterior?</h4>
-            <p className="text-[10px] text-slate-500 font-mono">Copia partidas, cuentas y montos sin duplicar pagos ni ejecuciones de caja.</p>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] text-slate-500 font-mono font-bold uppercase">De:</span>
+            <select
+              value={copyFromMonth}
+              onChange={e => setCopyFromMonth(e.target.value)}
+              className="p-1 px-2 border border-slate-200 bg-white rounded-lg text-[10.5px] font-medium"
+            >
+              {monthOptions.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleCopyMonth}
+              className="px-3 py-1 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-[10.5px] font-bold uppercase tracking-wider cursor-pointer whitespace-nowrap"
+            >
+              Copiar
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-500 font-mono font-bold uppercase">Copiar de:</span>
-          <select
-            value={copyFromMonth}
-            onChange={e => setCopyFromMonth(e.target.value)}
-            className="p-1 px-2 border border-slate-200 bg-white rounded-lg text-[10.5px] font-medium"
-          >
-            {monthOptions.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+        {/* Limpiar Estructura */}
+        <div className="bg-rose-50/35 border border-rose-100 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-rose-100 text-rose-700 rounded-lg">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-[10px] font-black uppercase tracking-wider text-rose-950">Vaciar presupuesto actual</h4>
+              <p className="text-[10px] text-rose-600/70 font-mono">Elimina permanentemente partidas de {selectedMonth} para empezar de cero.</p>
+            </div>
+          </div>
+
           <button
-            onClick={handleCopyMonth}
-            className="px-3 py-1 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-[10.5px] font-bold uppercase tracking-wider cursor-pointer"
+            type="button"
+            onClick={() => setClearConfirmationOpen(true)}
+            className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10.5px] font-bold uppercase tracking-wider cursor-pointer whitespace-nowrap shadow-xs transition-all shrink-0"
           >
-            Confirmar Copia
+            Vaciar {selectedMonth}
           </button>
         </div>
       </div>
 
       {/* 4. Statistics Widgets */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-3xs flex justify-between items-center">
           <div>
             <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 font-mono">Plan Total Presupuestado</span>
@@ -1201,8 +1582,11 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
 
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-3xs flex justify-between items-center">
           <div>
-            <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 font-mono">Real Egresado (Pagos Reales)</span>
-            <span className="block text-xl font-bold font-mono text-emerald-700">${totalPaidReal.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+            <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 font-mono">Real Egresado (Total)</span>
+            <span className="block text-xl font-bold font-mono text-emerald-700">${totalRealEgresadoCompleto.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+            <span className="block text-[8.5px] text-slate-400 font-medium font-mono leading-none mt-1">
+              ${totalPaidReal.toLocaleString("es-ES")} plan. + ${totalUnbudgeted.toLocaleString("es-ES")} extra
+            </span>
           </div>
           <div className="bg-emerald-50 p-3 rounded-xl text-emerald-700">
             <TrendingUp className="w-5 h-5" />
@@ -1211,8 +1595,24 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
 
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-3xs flex justify-between items-center">
           <div>
-            <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 font-mono">Saldo Pendiente Obligado</span>
+            <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 font-mono">Egresos No Presupuestados</span>
+            <span className="block text-xl font-bold font-mono text-amber-600">${totalUnbudgeted.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+            <span className="block text-[8.5px] text-slate-400 font-medium font-mono leading-none mt-1">
+              Desvíos fuera de plan
+            </span>
+          </div>
+          <div className="bg-amber-50 p-3 rounded-xl text-amber-600">
+            <AlertCircle className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-3xs flex justify-between items-center">
+          <div>
+            <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 font-mono font-mono">Saldo Pendiente Obligado</span>
             <span className="block text-xl font-bold font-mono text-rose-700">${totalPending.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+            <span className="block text-[8.5px] text-slate-400 font-medium font-mono leading-none mt-1">
+              Por pagar
+            </span>
           </div>
           <div className="bg-rose-50 p-3 rounded-xl text-rose-700">
             <AlertCircle className="w-5 h-5" />
@@ -1244,127 +1644,410 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {filteredExecution.map((b) => {
+              {(() => {
                 const getStatusStyle = (state: string) => {
                   if (state === "Pagado") return "bg-emerald-100/50 text-emerald-800 border-emerald-300";
                   if (state === "Parcialmente Pagado") return "bg-amber-100/50 text-amber-800 border-amber-300";
                   return "bg-rose-100 text-rose-800 border-rose-300 animate-pulse font-black";
                 };
 
-                const isPaid = b.state === "Pagado";
-                const isPartial = b.state === "Parcialmente Pagado";
+                if (groupSubaccounts) {
+                  if (groupedExecution.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400 text-xs font-mono uppercase">
+                          No hay partidas presupuestarias creadas para {selectedMonth}.
+                        </td>
+                      </tr>
+                    );
+                  }
 
-                return (
-                  <tr key={b.id} className={`hover:bg-slate-50/50 transition-colors ${
-                    isPaid 
-                    ? "state-pagado bg-emerald-50/20 text-emerald-900/60" 
-                    : isPartial
-                    ? "bg-amber-50/10 text-amber-900"
-                    : "state-pendiente bg-rose-50/20 text-rose-900"
-                  }`}>
-                    <td className={`p-3 pl-4 font-bold border-r border-slate-100/50 ${isPaid ? "text-slate-400" : "text-slate-900"}`}>{getAccountLabel(b.category)}</td>
-                    <td className={`p-3 font-semibold border-r border-slate-100/50 ${isPaid ? "text-slate-400 font-normal" : "text-slate-800"}`}>{getSubaccountLabel(b.category, b.subaccount)}</td>
-                    <td className="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100/50">
-                      {editId === b.id && editValue?.type === 'dueDate' ? (
-                        <input 
-                          type="date"
-                          value={editValue.val}
-                          onChange={(e) => setEditValue({ ...editValue, val: e.target.value })}
-                          onBlur={() => handleUpdateBudget(b.id, { dueDate: editValue.val })}
-                          autoFocus
-                          className="p-1 border border-indigo-200 rounded bg-white text-[10px] w-24"
-                        />
-                      ) : (
-                        <span 
-                          onClick={() => {
-                            setEditId(b.id);
-                            setEditValue({ type: 'dueDate', val: b.dueDate || "" });
-                          }}
-                          className="cursor-pointer hover:bg-slate-100 px-1 rounded transition-colors"
-                          title="Click para editar fecha"
-                        >
-                          {formatDateSafe(b.dueDate)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-800">
-                      {editId === b.id && editValue?.type === 'amount' ? (
-                        <input 
-                          type="text"
-                          value={editValue.display}
-                          onChange={(e) => {
-                            const formatted = formatAmountInput(e.target.value);
-                            const raw = parseInt(e.target.value.replace(/\D/g, "")) || 0;
-                            setEditValue({ ...editValue, display: formatted, val: raw });
-                          }}
-                          onBlur={() => handleUpdateBudget(b.id, { amount: editValue.val })}
-                          autoFocus
-                          className="p-1 border border-indigo-200 rounded bg-white text-[11px] text-right w-24 font-mono font-bold"
-                        />
-                      ) : (
-                        <span 
-                          onClick={() => {
-                            setEditId(b.id);
-                            setEditValue({ type: 'amount', display: b.amount.toLocaleString("es-ES"), val: b.amount });
-                          }}
-                          className="cursor-pointer hover:bg-slate-100 px-1 rounded transition-colors"
-                        >
-                          ${b.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right font-mono font-black border-r border-slate-100/50">
-                      {b.realPaid > 0 ? (
-                        <button
-                          onClick={() => handleOpenAudit(b)}
-                          className="w-full text-right text-emerald-700 hover:text-indigo-600 hover:underline cursor-pointer flex items-center justify-end gap-1.5 focus:outline-none transition-all group"
-                          title="Click para auditar detalle de pagos"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                          <span>${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
-                        </button>
-                      ) : (
-                        <span className="text-slate-400 font-normal">${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold space-x-1 border-r border-slate-100/50">
-                      <span className={b.deviation >= 0 ? (isPaid ? "text-emerald-600/40" : "text-emerald-700") : "text-rose-700 font-black"}>
-                        {b.deviation >= 0 ? "+" : ""}${b.deviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center border-r border-slate-100/50">
-                      <span className={`px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider state-label ${getStatusStyle(b.state)} whitespace-nowrap`}>
-                        {b.state}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center pr-4">
-                      <button
-                        onClick={() => handleDeleteBudget(b.id)}
-                        className="p-1 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded transition mx-auto block cursor-pointer"
-                        title="Eliminar partida presupuestaria"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                  return groupedExecution.map((g) => {
+                    const isExpanded = expandedCategories[g.category] !== false;
 
-              {filteredExecution.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400 text-xs font-mono uppercase">
-                    {filterState === "Todos" 
-                      ? `No hay partidas presupuestarias creadas para ${selectedMonth}.`
-                      : `No hay partidas con estado "${filterState}" para este período.`
-                    }
-                  </td>
-                </tr>
-              )}
+                    return (
+                      <React.Fragment key={"group_" + g.category}>
+                        {/* Parent Group Row */}
+                        <tr className="bg-slate-50/80 hover:bg-slate-100/80 transition-colors border-b border-slate-200/50">
+                          <td 
+                            onClick={() => setExpandedCategories({
+                              ...expandedCategories,
+                              [g.category]: !isExpanded
+                            })}
+                            className="p-3 pl-4 font-black text-slate-900 border-r border-slate-100/50 cursor-pointer select-none hover:text-indigo-600 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+                              )}
+                              <span>{getAccountLabel(g.category)}</span>
+                              <span className="text-[9px] bg-slate-200 text-slate-600 font-black px-1.5 py-0.5 rounded-full font-mono">
+                                {g.subaccounts.length} sub.
+                              </span>
+                            </div>
+                          </td>
+                          <td 
+                            onClick={() => setExpandedCategories({
+                              ...expandedCategories,
+                              [g.category]: !isExpanded
+                            })}
+                            className="p-3 text-slate-400 font-mono text-[9.5px] uppercase font-bold border-r border-slate-100/50 cursor-pointer select-none"
+                          >
+                            Todas las subcuentas
+                          </td>
+                          <td className="p-3 text-center font-mono text-[10px] text-slate-400 border-r border-slate-100/50">-</td>
+                          <td className="p-3 text-right font-mono font-black text-slate-900">
+                            ${g.totalAmount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3 text-right font-mono font-black text-emerald-800 border-r border-slate-100/50">
+                            ${g.totalRealPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3 text-right font-mono font-black space-x-1 border-r border-slate-100/50">
+                            <span className={g.totalDeviation >= 0 ? "text-emerald-700" : "text-rose-700"}>
+                              {g.totalDeviation >= 0 ? "+" : ""}${g.totalDeviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center border-r border-slate-100/50">
+                            <span className={`px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider state-label ${getStatusStyle(g.state)} whitespace-nowrap`}>
+                              {g.state}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center pr-4">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedCategories({
+                                ...expandedCategories,
+                                [g.category]: !isExpanded
+                              })}
+                              className="px-2.5 py-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-lg transition-colors font-bold text-[9px] uppercase tracking-wider cursor-pointer"
+                            >
+                              {isExpanded ? "Cerrar" : "Desplegar"}
+                            </button>
+                          </td>
+                        </tr>
+
+                        {/* Child Rows (Subaccounts) */}
+                        {isExpanded && g.subaccounts.map((b) => {
+                          const isPaid = b.state === "Pagado";
+                          const isPartial = b.state === "Parcialmente Pagado";
+
+                          return (
+                            <tr key={b.id} className={`hover:bg-indigo-500/[0.02] transition-colors ${
+                              isPaid 
+                              ? "state-pagado bg-emerald-50/10 text-emerald-900/60" 
+                              : isPartial
+                              ? "bg-amber-50/5 text-amber-900"
+                              : "state-pendiente bg-rose-50/10 text-rose-900"
+                            }`}>
+                              <td className="p-3 pl-8 font-semibold border-r border-slate-100/50 text-slate-400">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-slate-300 font-mono select-none">└─</span>
+                                  <span className="text-[10px] uppercase tracking-wider font-bold">{getAccountLabel(b.category)}</span>
+                                </div>
+                              </td>
+                              <td className={`p-3 font-semibold border-r border-slate-100/50 ${isPaid ? "text-slate-400 font-normal" : "text-slate-800"}`}>
+                                {getSubaccountLabel(b.category, b.subaccount)}
+                              </td>
+                              <td className="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100/50">
+                                {editId === b.id && editValue?.type === 'dueDate' ? (
+                                  <input 
+                                    type="date"
+                                    value={editValue.val}
+                                    onChange={(e) => setEditValue({ ...editValue, val: e.target.value })}
+                                    onBlur={() => handleUpdateBudget(b.id, { dueDate: editValue.val })}
+                                    autoFocus
+                                    className="p-1 border border-indigo-200 rounded bg-white text-[10px] w-24"
+                                  />
+                                ) : (
+                                  <span 
+                                    onClick={() => {
+                                      setEditId(b.id);
+                                      setEditValue({ type: 'dueDate', val: b.dueDate || "" });
+                                    }}
+                                    className="cursor-pointer hover:bg-slate-100 px-1 rounded transition-colors"
+                                    title="Click para editar fecha"
+                                  >
+                                    {formatDateSafe(b.dueDate)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-slate-800">
+                                {editId === b.id && editValue?.type === 'amount' ? (
+                                  <input 
+                                    type="text"
+                                    value={editValue.display}
+                                    onChange={(e) => {
+                                      const formatted = formatAmountInput(e.target.value);
+                                      const raw = parseInt(e.target.value.replace(/\D/g, "")) || 0;
+                                      setEditValue({ ...editValue, display: formatted, val: raw });
+                                    }}
+                                    onBlur={() => handleUpdateBudget(b.id, { amount: editValue.val })}
+                                    autoFocus
+                                    className="p-1 border border-indigo-200 rounded bg-white text-[11px] text-right w-24 font-mono font-bold"
+                                  />
+                                ) : (
+                                  <span 
+                                    onClick={() => {
+                                      setEditId(b.id);
+                                      setEditValue({ type: 'amount', display: b.amount.toLocaleString("es-ES"), val: b.amount });
+                                    }}
+                                    className="cursor-pointer hover:bg-slate-100 px-1 rounded transition-colors"
+                                  >
+                                    ${b.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right font-mono font-black border-r border-slate-100/50">
+                                {b.realPaid > 0 ? (
+                                  <button
+                                    onClick={() => handleOpenAudit(b)}
+                                    className="w-full text-right text-emerald-700 hover:text-indigo-600 hover:underline cursor-pointer flex items-center justify-end gap-1.5 focus:outline-none transition-all group"
+                                    title="Click para auditar detalle de pagos"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                                    <span>${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400 font-normal">${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold space-x-1 border-r border-slate-100/50">
+                                <span className={b.deviation >= 0 ? (isPaid ? "text-emerald-600/40" : "text-emerald-700") : "text-rose-700 font-black"}>
+                                  {b.deviation >= 0 ? "+" : ""}${b.deviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                                </span>
+                              </td>
+                              <td className="p-3 text-center border-r border-slate-100/50">
+                                <span className={`px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider state-label ${getStatusStyle(b.state)} whitespace-nowrap`}>
+                                  {b.state}
+                                </span>
+                              </td>
+                              <td className="p-3 text-center pr-4">
+                                <button
+                                  onClick={() => handleDeleteBudget(b.id)}
+                                  className="p-1 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded transition mx-auto block cursor-pointer"
+                                  title="Eliminar partida presupuestaria"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  });
+                } else {
+                  // Original flat view
+                  if (filteredExecution.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400 text-xs font-mono uppercase">
+                          {filterState === "Todos" 
+                            ? `No hay partidas presupuestarias creadas para ${selectedMonth}.`
+                            : `No hay partidas con estado "${filterState}" para este período.`
+                          }
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return filteredExecution.map((b) => {
+                    const isPaid = b.state === "Pagado";
+                    const isPartial = b.state === "Parcialmente Pagado";
+
+                    return (
+                      <tr key={b.id} className={`hover:bg-slate-50/50 transition-colors ${
+                        isPaid 
+                        ? "state-pagado bg-emerald-50/20 text-emerald-900/60" 
+                        : isPartial
+                        ? "bg-amber-50/10 text-amber-900"
+                        : "state-pendiente bg-rose-50/20 text-rose-900"
+                      }`}>
+                        <td className={`p-3 pl-4 font-bold border-r border-slate-100/50 ${isPaid ? "text-slate-400" : "text-slate-900"}`}>{getAccountLabel(b.category)}</td>
+                        <td className={`p-3 font-semibold border-r border-slate-100/50 ${isPaid ? "text-slate-400 font-normal" : "text-slate-800"}`}>{getSubaccountLabel(b.category, b.subaccount)}</td>
+                        <td className="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100/50">
+                          {editId === b.id && editValue?.type === 'dueDate' ? (
+                            <input 
+                              type="date"
+                              value={editValue.val}
+                              onChange={(e) => setEditValue({ ...editValue, val: e.target.value })}
+                              onBlur={() => handleUpdateBudget(b.id, { dueDate: editValue.val })}
+                              autoFocus
+                              className="p-1 border border-indigo-200 rounded bg-white text-[10px] w-24"
+                            />
+                          ) : (
+                            <span 
+                              onClick={() => {
+                                setEditId(b.id);
+                                setEditValue({ type: 'dueDate', val: b.dueDate || "" });
+                              }}
+                              className="cursor-pointer hover:bg-slate-100 px-1 rounded transition-colors"
+                              title="Click para editar fecha"
+                            >
+                              {formatDateSafe(b.dueDate)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-800">
+                          {editId === b.id && editValue?.type === 'amount' ? (
+                            <input 
+                              type="text"
+                              value={editValue.display}
+                              onChange={(e) => {
+                                const formatted = formatAmountInput(e.target.value);
+                                const raw = parseInt(e.target.value.replace(/\D/g, "")) || 0;
+                                setEditValue({ ...editValue, display: formatted, val: raw });
+                              }}
+                              onBlur={() => handleUpdateBudget(b.id, { amount: editValue.val })}
+                              autoFocus
+                              className="p-1 border border-indigo-200 rounded bg-white text-[11px] text-right w-24 font-mono font-bold"
+                            />
+                          ) : (
+                            <span 
+                              onClick={() => {
+                                setEditId(b.id);
+                                setEditValue({ type: 'amount', display: b.amount.toLocaleString("es-ES"), val: b.amount });
+                              }}
+                              className="cursor-pointer hover:bg-slate-100 px-1 rounded transition-colors"
+                            >
+                              ${b.amount.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right font-mono font-black border-r border-slate-100/50">
+                          {b.realPaid > 0 ? (
+                            <button
+                              onClick={() => handleOpenAudit(b)}
+                              className="w-full text-right text-emerald-700 hover:text-indigo-600 hover:underline cursor-pointer flex items-center justify-end gap-1.5 focus:outline-none transition-all group"
+                              title="Click para auditar detalle de pagos"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                              <span>${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 font-normal">${b.realPaid.toLocaleString("es-ES", { minimumFractionDigits: 2 })}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold space-x-1 border-r border-slate-100/50">
+                          <span className={b.deviation >= 0 ? (isPaid ? "text-emerald-600/40" : "text-emerald-700") : "text-rose-700 font-black"}>
+                            {b.deviation >= 0 ? "+" : ""}${b.deviation.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center border-r border-slate-100/50">
+                          <span className={`px-2.5 py-0.5 border rounded-full text-[9px] font-black uppercase tracking-wider state-label ${getStatusStyle(b.state)} whitespace-nowrap`}>
+                            {b.state}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center pr-4">
+                          <button
+                            onClick={() => handleDeleteBudget(b.id)}
+                            className="p-1 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded transition mx-auto block cursor-pointer"
+                            title="Eliminar partida presupuestaria"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  });
+                }
+              })()}
             </tbody>
           </table>
         </div>
+
+        {/* Unbudgeted Expenses Section */}
+        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <h3 className="text-xs font-black uppercase text-amber-700 dark:text-amber-500 tracking-wider flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-650" />
+                Egresos No Presupuestados (Desvíos Adicionales de {selectedMonth})
+              </h3>
+              <p className="text-[10px] text-slate-400 font-mono uppercase">Gastos liquidados en caja o registros de gestión que no tienen partida asignada (Excluye compras de mercadería)</p>
+            </div>
+            <span className="text-[10px] font-black font-mono bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50 px-2.5 py-1 rounded-full whitespace-nowrap">
+              TOTAL EXTRA: ${totalUnbudgeted.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+
+          <div className="border border-slate-100 rounded-xl overflow-hidden bg-amber-500/[0.02]">
+            <table className="w-full text-left text-[11px] border-collapse">
+              <thead>
+                <tr className="bg-amber-700 text-white uppercase tracking-wider text-[9px] font-black">
+                  <th className="p-3 pl-4">Categoría Principal (Cuenta)</th>
+                  <th className="p-3">Concepto/Detalle (Subcuenta)</th>
+                  <th className="p-3 text-center">Registros</th>
+                  <th className="p-3 text-right">Límite Estimado ($)</th>
+                  <th className="p-3 text-right">Outlays Reales No Planificados ($)</th>
+                  <th className="p-3 text-right">Delta / Desvío ($)</th>
+                  <th className="p-3 text-center">Estado del Obligado</th>
+                  <th className="p-3 text-center pr-4">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {unbudgetedExpenses.map((e) => {
+                  const mockBudgetForAudit = {
+                    id: `unbudg_${e.account}_${e.subaccount}`,
+                    category: e.account,
+                    subaccount: e.subaccount,
+                    amount: 0,
+                    realPaid: e.spent,
+                    deviation: -e.spent,
+                    state: "No Presupuestado"
+                  };
+
+                  return (
+                    <tr key={e.account + "||" + e.subaccount} className="bg-amber-500/[0.01] hover:bg-amber-500/[0.03] text-slate-800 transition-colors">
+                      <td className="p-3 pl-4 font-bold border-r border-slate-100 text-slate-900">{e.account}</td>
+                      <td className="p-3 font-semibold border-r border-slate-100 text-slate-800">{e.subaccount}</td>
+                      <td className="p-3 text-center font-mono text-[10px] text-slate-500 border-r border-slate-100">
+                        {e.items.length} mov.
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-400 border-r border-slate-100">$0,00</td>
+                      <td className="p-3 text-right font-mono font-black text-rose-700 border-r border-slate-100">
+                        ${e.spent.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold border-r border-slate-100">
+                        <span className="text-rose-700 font-black">
+                          -${e.spent.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center border-r border-slate-100">
+                        <span className="px-2 py-0.5 border border-rose-300 bg-rose-50 text-rose-700 rounded-full text-[9px] font-black uppercase tracking-wider whitespace-nowrap">
+                          No Planificado
+                        </span>
+                      </td>
+                      <td className="p-3 text-center pr-4">
+                        <button
+                          type="button"
+                          onClick={() => setAuditItem({ budget: mockBudgetForAudit, payments: e.items })}
+                          className="px-2 py-0.5 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200 hover:border-indigo-300 rounded-lg transition-colors inline-flex items-center gap-1 font-bold text-[9px] uppercase tracking-wider cursor-pointer"
+                          title="Auditar Movimientos"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>Auditar</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {unbudgetedExpenses.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-400 text-xs font-mono uppercase bg-white">
+                      No se detectaron egresos no presupuestados para {selectedMonth}. ¡Excelente control!
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    ) : (
+    ) : viewMode === "matrix" ? (
       /* 6. Matrix / Gantt View Implementation */
       <div className="bg-white rounded-2xl border border-slate-100 shadow-3xs p-6 space-y-4">
         <div>
@@ -1488,6 +2171,143 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
           })()}
         </div>
       </div>
+    ) : (
+      /* 7. Timeline / Deviation View Implementation */
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-3xs p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Línea de Tiempo de Desvíos Presupuestarios</h3>
+            <p className="text-[10px] text-slate-400 font-mono uppercase">Evolución mensual del presupuesto versus gastos reales y ahorros generados</p>
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-100 flex items-center gap-4 select-none">
+            <span className="flex items-center gap-1.5 font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 block"></span> Exceso (Gastado &gt; Ppto)
+            </span>
+            <span className="flex items-center gap-1.5 font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block"></span> Ahorro (Gastado &lt; Ppto)
+            </span>
+          </div>
+        </div>
+
+        {/* Timeline Container */}
+        <div className="overflow-x-auto pb-6 pt-4 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800 scrollbar-track-transparent">
+          <div className="min-w-[1900px] h-[420px] relative flex items-center px-8">
+            {/* The Horizontal Baseline */}
+            <div className="absolute left-0 right-0 h-1 bg-slate-200 dark:bg-slate-800 rounded-full"></div>
+
+            {/* Render months along the line */}
+            <div className="w-full flex justify-between relative z-10">
+              {timelineData.map((m, idx) => {
+                const isSelected = selectedMonth === m.monthStr;
+                const hasData = m.budgeted > 0 || m.spent > 0;
+                
+                // Let's compute heights
+                // Max absolute deviation in the year
+                const maxDeviationVal = Math.max(...timelineData.map(item => Math.abs(item.deviation)), 1);
+                
+                // Absolute deviation height percentage
+                const barHeightPercent = Math.min((Math.abs(m.deviation) / maxDeviationVal) * 110, 110);
+                
+                // Deviation percentage
+                const deviationPercentage = m.budgeted > 0 ? ((m.spent - m.budgeted) / m.budgeted) * 100 : 0;
+                
+                const isOverspent = m.spent > m.budgeted;
+                const isSavings = m.spent < m.budgeted && m.budgeted > 0;
+                const isZero = m.spent === m.budgeted && hasData;
+
+                return (
+                  <div 
+                    key={m.monthStr} 
+                    onClick={() => setSelectedMonth(m.monthStr)}
+                    className={`flex flex-col items-center w-[150px] cursor-pointer transition-all duration-300 relative ${
+                      isSelected ? "scale-105" : "hover:scale-102 opacity-80 hover:opacity-100"
+                    }`}
+                  >
+                    {/* Top half: Spent > Budgeted (Red bar going UP) */}
+                    <div className="h-[150px] w-full flex flex-col justify-end items-center pb-1 relative">
+                      {isOverspent && (
+                        <>
+                          {/* Floating Data Card */}
+                          <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 p-1.5 rounded-lg shadow-3xs text-center text-[9px] font-black w-28 mb-1 flex flex-col gap-0.5 z-10 animate-fade-in">
+                            <span className="text-rose-700 dark:text-rose-400 font-mono">Real: ${m.spent.toLocaleString("es-ES")}</span>
+                            <span className="text-rose-800 dark:text-rose-300 bg-rose-100/50 dark:bg-rose-900/30 px-1 py-0.5 rounded-sm font-mono">
+                              +{Math.abs(m.deviation).toLocaleString("es-ES")} (+{deviationPercentage.toFixed(0)}%)
+                            </span>
+                          </div>
+                          {/* Red Bar */}
+                          <div 
+                            style={{ height: `${barHeightPercent}px` }}
+                            className="w-4 bg-red-500 rounded-t-lg shadow-sm border border-red-600 transition-all duration-500 ease-out"
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    {/* Center area: Period & Budgeted Amount on the same line */}
+                    <div className="h-[60px] flex flex-col justify-center items-center relative w-full">
+                      {/* Connecting Node on the timeline */}
+                      <div className={`w-4 h-4 rounded-full border-4 absolute ${
+                        isSelected 
+                        ? "bg-indigo-600 border-white dark:border-slate-900 ring-2 ring-indigo-500 scale-125 shadow-md" 
+                        : hasData 
+                        ? isOverspent 
+                          ? "bg-red-500 border-white dark:border-slate-900 shadow-3xs" 
+                          : isSavings 
+                          ? "bg-emerald-500 border-white dark:border-slate-900 shadow-3xs" 
+                          : "bg-indigo-400 border-white dark:border-slate-900 shadow-3xs"
+                        : "bg-slate-300 dark:bg-slate-700 border-white dark:border-slate-900"
+                      }`} />
+
+                      {/* Inline label: Month + Budgeted */}
+                      <div className={`mt-5 text-[10.5px] font-black text-center whitespace-nowrap p-1.5 rounded-lg border tracking-wide transition-all ${
+                        isSelected 
+                        ? "bg-indigo-600 text-white border-indigo-700 shadow-xs scale-105" 
+                        : "bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:border-indigo-400 shadow-3xs"
+                      }`}>
+                        <span className="block">{m.monthStr}</span>
+                        <span className="block text-[9.5px] font-mono opacity-90 mt-0.5">Ppto: ${m.budgeted.toLocaleString("es-ES")}</span>
+                      </div>
+                    </div>
+
+                    {/* Bottom half: Spent < Budgeted (Green bar going DOWN) */}
+                    <div className="h-[150px] w-full flex flex-col justify-start items-center pt-1 relative">
+                      {isSavings && (
+                        <>
+                          {/* Green Bar */}
+                          <div 
+                            style={{ height: `${barHeightPercent}px` }}
+                            className="w-4 bg-emerald-500 rounded-b-lg shadow-sm border border-emerald-600 transition-all duration-500 ease-out"
+                          />
+                          {/* Floating Data Card */}
+                          <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 p-1.5 rounded-lg shadow-3xs text-center text-[9px] font-black w-28 mt-1 flex flex-col gap-0.5 z-10 animate-fade-in">
+                            <span className="text-emerald-700 dark:text-emerald-400 font-mono">Real: ${m.spent.toLocaleString("es-ES")}</span>
+                            <span className="text-emerald-800 dark:text-emerald-300 bg-emerald-100/50 dark:bg-emerald-900/30 px-1 py-0.5 rounded-sm font-mono">
+                              Ahorro: -${Math.abs(m.deviation).toLocaleString("es-ES")} ({Math.abs(deviationPercentage).toFixed(0)}%)
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      {isZero && (
+                        <div className="text-[9px] font-bold text-slate-500 mt-2 italic font-mono bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                          Cuadre Perfecto ($0)
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Guidance Notice */}
+        <div className="bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100/50 p-3.5 rounded-xl flex items-center gap-3">
+          <TrendingUp className="w-5 h-5 text-indigo-600 flex-shrink-0 animate-pulse" />
+          <p className="text-[10.5px] text-indigo-950 dark:text-indigo-250 leading-relaxed font-bold">
+            💡 <strong>Interactividad de Navegación</strong>: Haz clic en cualquier período de la línea de tiempo para seleccionarlo de forma activa. El listado operativo y las tarjetas estadísticas de arriba se actualizarán de inmediato para mostrar la planificación ejecutada y el detalle de dicho mes.
+          </p>
+        </div>
+      </div>
     )}
       </div>
 
@@ -1567,6 +2387,45 @@ export const PresupuestoMensual: React.FC<PresupuestoMensualProps> = ({ apiFetch
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10.5px] font-black uppercase tracking-wider rounded-lg transition-colors cursor-pointer"
               >
                 Sí, Duplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {clearConfirmationOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150 text-left">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-rose-50 text-rose-600 rounded-full shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <h4 className="text-sm font-black uppercase text-slate-900 tracking-wider">Vaciar Presupuesto</h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  ¿Estás seguro de que deseas vaciar permanentemente todo el presupuesto del período <strong className="text-rose-950 font-black">{selectedMonth}</strong>?
+                </p>
+                <p className="text-[10px] text-rose-600 font-medium">
+                  Atención: Se eliminarán todas las partidas presupuestarias fíjadas para este mes. Esta acción no se puede deshacer.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={() => setClearConfirmationOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10.5px] font-black uppercase tracking-wider rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={executeClearMonth}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-[10.5px] font-black uppercase tracking-wider rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isClearing ? "Eliminando..." : "Sí, Vaciar Presupuesto"}
               </button>
             </div>
           </div>

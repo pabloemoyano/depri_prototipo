@@ -55,6 +55,53 @@ export const getUnifiedSubaccounts = (accountId: string): Subaccount[] => {
     return [];
 };
 
+export const getAccountLabel = (idOrLabel: string): string => {
+    if (!idOrLabel) return "";
+    
+    // 1. Look up in unified accounts by ID or label
+    const accounts = getUnifiedAccounts();
+    const found = accounts.find(a => a.id === idOrLabel || a.label === idOrLabel);
+    if (found) return found.label;
+
+    // 2. Parse if it follows the ID format: {pillarId}_{label}_{timestamp}
+    const parts = idOrLabel.split("_");
+    if (parts.length >= 3) {
+        const lastPart = parts[parts.length - 1];
+        if (/^\d{10,15}$/.test(lastPart)) {
+            return parts[parts.length - 2];
+        }
+    }
+    
+    return idOrLabel;
+};
+
+export const getSubaccountLabel = (accountIdOrLabel: string, subIdOrLabel: string): string => {
+    if (!subIdOrLabel) return "";
+    
+    // 1. Look up by subaccountId or label under the accountIdOrLabel
+    const subs = getUnifiedSubaccounts(accountIdOrLabel);
+    const found = subs.find(s => s.id === subIdOrLabel || s.label === subIdOrLabel);
+    if (found) return found.label;
+
+    // 2. Look up globally under any account
+    const allAccounts = getUnifiedAccounts();
+    for (const acc of allAccounts) {
+        const sFound = acc.subaccounts.find(s => s.id === subIdOrLabel || s.label === subIdOrLabel);
+        if (sFound) return sFound.label;
+    }
+
+    // 3. Parse if it follows the ID format: {accountId}_{label}_{timestamp}
+    const parts = subIdOrLabel.split("_");
+    if (parts.length >= 2) {
+        const lastPart = parts[parts.length - 1];
+        if (/^\d{10,15}$/.test(lastPart)) {
+            return parts[parts.length - 2];
+        }
+    }
+    
+    return subIdOrLabel;
+};
+
 export const saveUnifiedAccounts = (accounts: Account[]) => {
     const plan = getUnifiedPlan();
     // Prefer "Gastos Estructurales" or "Otros Movimientos" as fallback

@@ -116,6 +116,7 @@ export const CajaDiariaTab: React.FC<CajaDiariaTabProps> = ({
 
         {activeSubTab === "fin_punto" && (
           <PuntoEquilibrio 
+            sales={sales}
             apiFetch={apiFetch}
           />
         )}

@@ -100,11 +100,11 @@ async function main() {
   console.log(`Total movements in database: ${allMovements.length}`);
   console.log(`Total items in stock: ${allStock.length}`);
 
-  // June 15, 2026 Audits search
-  // Target date string starting with 2026-06-15 (or contains 15/06/2026 / 15-06-2026)
+  // June 2026 Audits search
+  // Target date string starting with 2026-06
   const isTargetDate = (dateStr: string) => {
     if (!dateStr) return false;
-    return dateStr.startsWith("2026-06-15") || dateStr.includes("2026-06-15") || dateStr.includes("15/06/2026") || dateStr.includes("15-06-2026");
+    return dateStr.startsWith("2026-06");
   };
 
   const targetAudits = allAudits.filter((aud: any) => isTargetDate(aud.date));
@@ -140,9 +140,7 @@ async function main() {
         return true;
       }
     }
-    // Check if movement was created today, has type "AJUSTE", and references one of the audit IDs in description/doc ID
-    if (isTargetDate(mov.date || mov.created_at) && mov.type === "AJUSTE") {
-      // Just in case
+    if (mov.type === "AJUSTE" && isTargetDate(mov.date || mov.created_at)) {
       return true;
     }
     return false;

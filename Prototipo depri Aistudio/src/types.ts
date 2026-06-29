@@ -170,6 +170,10 @@ export interface AuditLogEntry {
   status: "Completado" | "En Proceso" | "Alerta";
   items?: AuditDraftItem[];
   note?: string;
+  snapshotTotalQty?: number;
+  snapshotTotalItems?: number;
+  snapshotTotalCostValuation?: number;
+  snapshotTotalSalesValuation?: number;
 }
 
 export interface AuditDraftItem {

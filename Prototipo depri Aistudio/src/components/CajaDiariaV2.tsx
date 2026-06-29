@@ -74,6 +74,7 @@ interface CustomEntry {
   isPendingClassification?: boolean;
   description: string;
   amount: number;
+  purchaseId?: string;
 }
 
 interface CajaV2Session {
@@ -808,12 +809,14 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
         console.warn("Self-repair diagnostics error:", e);
       }
 
+      let fetchedActiveSession: any = null;
       try {
         const activeRes = await apiFetchCaja("/api/caja/active");
         if (activeRes.ok) {
           const s = await activeRes.json();
           if (s && s.id) {
             setActiveSession(s);
+            fetchedActiveSession = s;
           }
         }
       } catch (e) {
@@ -837,7 +840,17 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
 
             // Identify local closed sessions missing from Firestore
             const serverIds = new Set(serverHist.map(h => h.id));
-            const missingFromServer = localHist.filter(h => h && h.id && !serverIds.has(h.id));
+            const activeId = fetchedActiveSession?.id;
+            const activeDateIso = fetchedActiveSession?.dateStr ? parseCustomDateToIso(fetchedActiveSession.dateStr) : null;
+
+            const missingFromServer = localHist.filter(h => {
+              if (!h || !h.id) return false;
+              if (serverIds.has(h.id)) return false;
+              // If it's currently active on the server, it's NOT a missing closed session!
+              if (activeId && h.id === activeId) return false;
+              if (activeDateIso && parseCustomDateToIso(h.dateStr) === activeDateIso) return false;
+              return true;
+            });
 
             if (missingFromServer.length > 0) {
               console.log("[SYNC] Local-only closed sessions found. Migrating to server:", missingFromServer);
@@ -1030,7 +1043,10 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
   const subtotalCancha1 = session.cancha1.reduce((sum, slot) => sum + (Number(slot.amount) || 0), 0);
   const subtotalCancha2 = session.cancha2.reduce((sum, slot) => sum + (Number(slot.amount) || 0), 0);
 
-  const otrosIngresosManualTotal = session.otrosIngresos.reduce((sum, row) => sum + (row.quantity * (Number(row.amount) || 0)), 0);
+  const otrosIngresosManualTotal = session.otrosIngresos.reduce((sum, row) => {
+    if (row.id === "buffet") return sum;
+    return sum + (row.quantity * (Number(row.amount) || 0));
+  }, 0);
   const totalOtrosIngresos = barSalesTotal + otrosIngresosManualTotal;
 
   // Other Expenses: manual otrosEgresos only
@@ -1134,6 +1150,7 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
 
       // Post Otros Ingresos (excluding automatic Buffet bar totals, since they are already sales)
       for (const row of activeSession.otrosIngresos) {
+        if (row.id === "buffet") continue;
         if (row.amount > 0) {
           const accLabel = masterPlan.flatMap(p => p.accounts).find(a => a.id === row.accountId)?.label || "Sin Cuenta";
           const subaccLabel = masterPlan.flatMap(p => p.accounts).flatMap(a => a.subaccounts).find(s => s.id === row.subaccountId)?.label || (row.isPendingClassification ? `Pendiente: ${row.suggestedSubaccount}` : "Sin Subcuenta");
@@ -1223,33 +1240,61 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
       // Execute onAddSale calls and wait sequentially to keep database order correct
       if (onAddSale) {
         for (const sale of salesToRegister) {
-          try {
-            await onAddSale(sale);
-          } catch (error) {
-            console.error("Error creating effective system movements:", error);
+          const success = await onAddSale(sale);
+          if (success === false) {
+            throw new Error(`Error registrando el movimiento "${sale.items[0]?.name}". El servidor rechazó la solicitud.`);
           }
         }
       }
+
+      // Recalculate physical cash total in bills on closing to ensure perfect sync
+      const finalRendicionEfectivo = Object.entries(activeSession.billCounts || {}).reduce(
+        (sum, [denom, count]) => sum + (Number(denom) * (Number(count) || 0)),
+        0
+      );
 
       const closedSession: CajaV2Session = {
         ...activeSession,
         isClosed: true,
         isOpen: false,
+        rendicionEfectivo: finalRendicionEfectivo,
         dateStr: currentDateISO
       };
       
-      // Synchronize closed session data with the backend
-      try {
-        await apiFetchCaja("/api/caja/history", {
-          method: "POST",
-          body: JSON.stringify(closedSession)
-        });
-        
-        await apiFetchCaja("/api/caja/active", {
-          method: "DELETE"
-        });
-      } catch (err) {
-        console.error("Error synchronizing closed shift with server:", err);
+      // Synchronize closed session data with the backend with strict status validation
+      const historyRes = await apiFetchCaja("/api/caja/history", {
+        method: "POST",
+        body: JSON.stringify(closedSession)
+      });
+      
+      if (!historyRes.ok) {
+        const errJSON = await historyRes.json().catch(() => ({}));
+        throw new Error(`No se pudo registrar la sesión de caja en el historial: ${errJSON.error || historyRes.statusText}`);
+      }
+
+      const historyData = await historyRes.json();
+      if (!historyData || !historyData.id) {
+        throw new Error("El servidor no retornó una confirmación de guardado válida (ID faltante).");
+      }
+
+      // STRICT VERIFICATION: Fetch from backend to ensure the caja has indeed been saved
+      const verifyRes = await apiFetchCaja("/api/caja/history");
+      if (!verifyRes.ok) {
+        throw new Error("Error al consultar el historial del servidor para verificar el guardado de la caja.");
+      }
+      const verifyList = await verifyRes.json();
+      const isVerifiedSaved = Array.isArray(verifyList) && verifyList.some((h: any) => h && h.id === closedSession.id);
+      if (!isVerifiedSaved) {
+        throw new Error("Fallo crítico de verificación: La caja fue guardada pero no se encuentra presente en el historial de la base de datos.");
+      }
+
+      // Once successfully persisted and verified, delete the temporary active session from backend
+      const deleteRes = await apiFetchCaja("/api/caja/active", {
+        method: "DELETE"
+      });
+      if (!deleteRes.ok) {
+        const errJSON = await deleteRes.json().catch(() => ({}));
+        throw new Error(`No se pudo dar de baja la caja activa del servidor tras persistir el historial: ${errJSON.error || deleteRes.statusText}`);
       }
 
       setHistory(prev => [closedSession, ...prev]);
@@ -1258,9 +1303,10 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
       setActiveSession(fresh);
       setIsClosingConfirm(false);
       
-      setSuccessNotification("¡Hoja diaria de caja V2 cerrada con éxito! Todos los registros de la planilla (turnos, ingresos y egresos) han sido grabados como movimientos de transacciones efectivas del sistema.");
-    } catch (e) {
-      console.error(e);
+      setSuccessNotification("¡Hoja diaria de caja V2 cerrada con éxito! Todos los registros de la planilla (turnos, ingresos y egresos) han sido grabados de forma segura, impactaron en todos los módulos correspondientes, y la persistencia en base de datos fue verificada satisfactoriamente.");
+    } catch (e: any) {
+      console.error("Fallo crítico en el proceso de cierre de caja:", e);
+      alert(`⚠️ ERROR EN EL PROCESO DE CIERRE: ${e.message || e || "Ocurrió un error inesperado al cerrar la caja."}\n\nLa caja NO se ha cerrado para evitar cualquier inconsistencia o pérdida de datos. Por favor, intente nuevamente.`);
     } finally {
       setIsSaving(false);
     }
@@ -1305,6 +1351,53 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
     } catch (e: any) {
       console.error(e);
       alert("Error de conexión al anular la apertura: " + (e.message || e));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReopenCaja = async () => {
+    if (!confirm("¿Estás seguro de que deseas REABRIR la caja de este día? Esto la quitará del historial cerrado y la pondrá de nuevo como la Caja Activa actual, permitiéndote realizar modificaciones, agregar turnos o egresos, y volver a cerrarla cuando corresponda.")) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await apiFetchCaja("/api/caja/reopen", {
+        method: "POST",
+        body: JSON.stringify({ dateStr: currentDateISO })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const reopenedId = data.session?.id;
+        
+        // Remove this specific session from local closed history to prevent automatic re-upload
+        const saved = localStorage.getItem("caja_v2_closed_history");
+        if (saved) {
+          try {
+            const hist = JSON.parse(saved);
+            if (Array.isArray(hist)) {
+              const filtered = hist.filter((h: any) => h && parseCustomDateToIso(h.dateStr) !== currentDateISO && h.id !== reopenedId);
+              localStorage.setItem("caja_v2_closed_history", JSON.stringify(filtered));
+            }
+          } catch (e) {
+            console.error("Error cleaning local history on reopen:", e);
+          }
+        }
+
+        setSuccessNotification("¡Planilla de caja reabierta con éxito! Ahora puedes modificarla en esta pantalla.");
+        
+        // Reload page to refresh all tab states cleanly
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        const errText = await res.text();
+        alert("Error al reabrir la caja en el servidor: " + errText);
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("Error de conexión al reabrir la caja: " + (e.message || e));
     } finally {
       setIsSaving(false);
     }
@@ -1410,7 +1503,10 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
     const barTotal = sSales.reduce((acc, sale) => acc + (Number(sale.total) || 0), 0);
     const barQty = sSales.reduce((acc, sale) => acc + (sale.items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0), 0);
 
-    const otrosIngresosTotal = sess.otrosIngresos.reduce((sum, r) => sum + ((Number(r.quantity) || 1) * (Number(r.amount) || 0)), 0);
+    const otrosIngresosTotal = sess.otrosIngresos.reduce((sum, r) => {
+      if (r.id === "buffet") return sum;
+      return sum + ((Number(r.quantity) || 1) * (Number(r.amount) || 0));
+    }, 0);
     const totalIncomes = barTotal + otrosIngresosTotal;
 
     const totalExpenses = sess.otrosEgresos.reduce((sum, r) => sum + ((Number(r.quantity) || 1) * (Number(r.amount) || 0)), 0);
@@ -1708,10 +1804,21 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
 
           <div className="text-center flex flex-col items-center justify-center space-y-2 mt-1">
             {isClosed ? (
-              <span className="text-[11px] text-rose-600 font-extrabold bg-rose-50 py-1 px-4 rounded-full border border-rose-200/50 inline-flex items-center gap-1 uppercase tracking-wider shadow-4xs">
-                <Lock className="w-3 h-3" />
-                <span>Caja archivada (Solo lectura)</span>
-              </span>
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-[11px] text-rose-600 font-extrabold bg-rose-50 py-1 px-4 rounded-full border border-rose-200/50 inline-flex items-center gap-1 uppercase tracking-wider shadow-4xs">
+                  <Lock className="w-3 h-3" />
+                  <span>Caja archivada (Solo lectura)</span>
+                </span>
+                <button
+                  onClick={handleReopenCaja}
+                  disabled={isSaving}
+                  className="mt-1 bg-amber-600 hover:bg-amber-700 active:scale-95 transition-all text-white font-extrabold text-[10px] py-1.5 px-3 rounded-lg shadow-xs flex items-center gap-1 cursor-pointer uppercase tracking-wider"
+                  title="Reabrir planilla diaria para edición"
+                >
+                  <Unlock className="w-3 h-3" />
+                  <span>Reabrir Planilla de Caja</span>
+                </button>
+              </div>
             ) : isOpen ? (
               <span className="text-[11px] text-emerald-600 font-extrabold bg-emerald-50 py-1 px-4 rounded-full border border-emerald-200/50 inline-flex items-center gap-1 uppercase tracking-wider shadow-4xs">
                 <Unlock className="w-3 h-3" />
@@ -2274,10 +2381,10 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                           <input
                             type="number"
                             min="1"
-                            disabled={session.isClosed}
+                            disabled={session.isClosed || !!row.purchaseId}
                             value={row.quantity || ""}
                             onChange={(e) => updateOtrosEgresosRow(row.id, { quantity: Number(e.target.value) || 1 })}
-                            className="w-full px-1.5 py-0.5 border border-slate-200 rounded-md text-center font-mono font-bold text-[11.5px]"
+                            className="w-full px-1.5 py-0.5 border border-slate-200 rounded-md text-center font-mono font-bold text-[11.5px] disabled:bg-slate-100 disabled:text-slate-500"
                           />
                         </td>
                         <td className="py-1 px-3">
@@ -2286,7 +2393,7 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                             options={allAccounts.map(a => a.label)}
                             placeholder="Seleccionar Cuenta..."
                             focusBorderColor="focus:ring-rose-500"
-                            disabled={session.isClosed}
+                            disabled={session.isClosed || !!row.purchaseId}
                             onChange={(val) => {
                               const matched = allAccounts.find(a => a.label.toLowerCase() === val.toLowerCase());
                               if (matched) {
@@ -2302,35 +2409,37 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                         </td>
                         <td className="py-1 px-3">
                           {row.isPendingClassification ? (
-                            <div className="flex flex-col gap-1">
+                            <div className="flex flex-col gap-1 w-full">
                               <AutocompleteBoxlist
                                 value={row.suggestedSubaccount || ""}
                                 options={[]}
                                 placeholder="Sugerir subcuenta..."
                                 focusBorderColor="focus:ring-amber-500"
-                                disabled={session.isClosed}
+                                disabled={session.isClosed || !!row.purchaseId}
                                 onChange={(val) => updateOtrosEgresosRow(row.id, { suggestedSubaccount: val })}
                                 onUpdateOptions={() => {}}
                               />
-                              <div className="flex items-center gap-1">
-                                <input 
-                                  type="checkbox" 
-                                  id={`check-found-exp-${row.id}`}
-                                  checked={false}
-                                  onChange={() => updateOtrosEgresosRow(row.id, { isPendingClassification: false, suggestedSubaccount: "" })}
-                                  className="w-3 h-3 text-rose-600"
-                                />
-                                <label htmlFor={`check-found-exp-${row.id}`} className="text-[9px] text-slate-500 uppercase font-black cursor-pointer">Revertir</label>
-                              </div>
+                              {!row.purchaseId && (
+                                <div className="flex items-center gap-1">
+                                  <input 
+                                    type="checkbox" 
+                                    id={`check-found-exp-${row.id}`}
+                                    checked={false}
+                                    onChange={() => updateOtrosEgresosRow(row.id, { isPendingClassification: false, suggestedSubaccount: "" })}
+                                    className="w-3 h-3 text-rose-600"
+                                  />
+                                  <label htmlFor={`check-found-exp-${row.id}`} className="text-[9px] text-slate-500 uppercase font-black cursor-pointer">Revertir</label>
+                                </div>
+                              )}
                             </div>
                           ) : (
-                            <div className="flex flex-col gap-1">
+                            <div className="flex flex-col gap-1 w-full">
                               <AutocompleteBoxlist
                                 value={subaccounts.find(s => s.id === row.subaccountId)?.label || ""}
                                 options={subaccounts.map(s => s.label)}
                                 placeholder="Seleccionar Subcuenta..."
                                 focusBorderColor="focus:ring-rose-500"
-                                disabled={session.isClosed || !row.accountId}
+                                disabled={session.isClosed || !row.accountId || !!row.purchaseId}
                                 onChange={(val) => {
                                   const matched = subaccounts.find(s => s.label.toLowerCase() === val.toLowerCase());
                                   if (matched) {
@@ -2343,7 +2452,7 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                                 }}
                                 onUpdateOptions={() => {}}
                               />
-                              {row.accountId && (
+                              {!row.purchaseId && row.accountId && (
                                 <div className="flex items-center gap-1">
                                   <input 
                                     type="checkbox" 
@@ -2362,30 +2471,36 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                           <textarea
                             placeholder="Descripción detallada..."
                             value={row.description || ""}
-                            disabled={session.isClosed}
+                            disabled={session.isClosed || !!row.purchaseId}
                             onChange={(e) => updateOtrosEgresosRow(row.id, { description: e.target.value })}
-                            className="w-full px-1.5 py-1 border border-slate-100 rounded-md text-[10px] text-slate-500 focus:ring-1 focus:ring-rose-500 bg-slate-50/30 min-h-[40px] resize-none"
+                            className="w-full px-1.5 py-1 border border-slate-100 rounded-md text-[10px] text-slate-500 focus:ring-1 focus:ring-rose-500 bg-slate-50/30 min-h-[40px] resize-none disabled:bg-slate-100 disabled:text-slate-500"
                           />
                         </td>
                         <td className="py-1 px-3 text-right">
                           <input
                             type="number"
-                            disabled={session.isClosed}
+                            disabled={session.isClosed || !!row.purchaseId}
                             placeholder="0"
                             value={row.amount || ""}
                             onChange={(e) => updateOtrosEgresosRow(row.id, { amount: Number(e.target.value) || 0 })}
-                            className="w-full px-1.5 py-1 border border-slate-200 rounded-md text-right font-mono text-xs font-bold focus:ring-1 focus:ring-rose-500"
+                            className="w-full px-1.5 py-1 border border-slate-200 rounded-md text-right font-mono text-xs font-bold focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-500"
                           />
                         </td>
                         {!session.isClosed && (
                           <td className="py-1 px-3 text-center">
-                            <button
-                              onClick={() => deleteOtrosEgresosRow(row.id)}
-                              className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
-                              title="Borrar fila"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {row.purchaseId ? (
+                              <span className="inline-flex items-center text-slate-400" title="Movimiento de compra bloqueado">
+                                <Lock className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => deleteOtrosEgresosRow(row.id)}
+                                className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                                title="Borrar fila"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -2516,13 +2631,18 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                                                 min="0"
                                                 disabled={!isEditable}
                                                 value={count || ""}
-                                                onChange={(e) => setActiveSession(prev => ({
-                                                    ...prev,
-                                                    billCounts: {
+                                                onChange={(e) => setActiveSession(prev => {
+                                                    const updatedCounts = {
                                                         ...(prev.billCounts || {}),
                                                         [denom.toString()]: Number(e.target.value) || 0
-                                                    }
-                                                }))}
+                                                    };
+                                                    const updatedCash = Object.entries(updatedCounts).reduce((sum, [d, count]) => sum + (Number(d) * (Number(count) || 0)), 0);
+                                                    return {
+                                                        ...prev,
+                                                        billCounts: updatedCounts,
+                                                        rendicionEfectivo: updatedCash
+                                                    };
+                                                })}
                                                 className="w-16 px-1 py-0.5 border border-slate-200 rounded font-mono text-center bg-white"
                                             />
                                         </td>
@@ -2702,7 +2822,10 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
               });
               const histBarSalesTotal = histBarSalesOnly.reduce((acc, sale) => acc + (Number(sale.total) || 0), 0);
 
-              const histTotalOtrosIncomes = histBarSalesTotal + hist.otrosIngresos.reduce((sum, r) => sum + (r.quantity * (Number(r.amount) || 0)), 0);
+              const histTotalOtrosIncomes = histBarSalesTotal + hist.otrosIngresos.reduce((sum, r) => {
+                if (r.id === "buffet") return sum;
+                return sum + (r.quantity * (Number(r.amount) || 0));
+              }, 0);
               const histTotalEgresos = (hist.personalAmount || 0) + hist.otrosEgresos.reduce((sum, r) => sum + (r.quantity * (r.amount || 0)), 0);
               const histTotalIngresosCanchas = histTotalCancha1 + histTotalCancha2;
 
@@ -3224,7 +3347,18 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                           <tr key={`print-inc-${i}`}>
                             <td className="py-1.5 font-mono">{row.quantity || 1}</td>
                             <td className="py-1.5 font-semibold text-slate-800">
-                              {row.account || "Ingreso"}{row.account && row.description ? " - " : ""}{row.description}
+                              {(() => {
+                                const accLabel = masterPlan.flatMap(p => p.accounts).find(a => a.id === row.accountId)?.label;
+                                const subaccLabel = masterPlan.flatMap(p => p.accounts).flatMap(a => a.subaccounts).find(s => s.id === row.subaccountId)?.label || (row.isPendingClassification ? `Pendiente: ${row.suggestedSubaccount}` : "");
+
+                                if (accLabel && subaccLabel) {
+                                  return `${accLabel} + ${subaccLabel}`;
+                                } else if (accLabel) {
+                                  return accLabel;
+                                } else {
+                                  return row.account || "Ingreso";
+                                }
+                              })()}
                             </td>
                             <td className="py-1.5 text-right font-mono text-slate-705">${((row.quantity || 1) * (row.amount || 0)).toFixed(2)}</td>
                           </tr>
@@ -3262,7 +3396,10 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                                 }
                               });
                               const bSalesTotal = histSales.reduce((acc, sale) => acc + (Number(sale.total) || 0), 0);
-                              return (bSalesTotal + printSession.otrosIngresos.reduce((sum, r) => sum + ((Number(r.quantity) || 1) * (Number(r.amount) || 0)), 0)).toFixed(2);
+                              return (bSalesTotal + printSession.otrosIngresos.reduce((sum, r) => {
+                                if (r.id === "buffet") return sum;
+                                return sum + ((Number(r.quantity) || 1) * (Number(r.amount) || 0));
+                              }, 0)).toFixed(2);
                             })()}
                           </td>
                         </tr>
@@ -3298,7 +3435,18 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                           <tr key={`print-exp-${i}`}>
                             <td className="py-1.5 font-mono">{row.quantity || 1}</td>
                             <td className="py-1.5 font-semibold text-slate-700">
-                              {row.account || "Egreso"}{row.account && row.description ? " - " : ""}{row.description}
+                              {(() => {
+                                const accLabel = masterPlan.flatMap(p => p.accounts).find(a => a.id === row.accountId)?.label;
+                                const subaccLabel = masterPlan.flatMap(p => p.accounts).flatMap(a => a.subaccounts).find(s => s.id === row.subaccountId)?.label || (row.isPendingClassification ? `Pendiente: ${row.suggestedSubaccount}` : "");
+
+                                if (accLabel && subaccLabel) {
+                                  return `${accLabel} + ${subaccLabel}`;
+                                } else if (accLabel) {
+                                  return accLabel;
+                                } else {
+                                  return row.account || "Egreso";
+                                }
+                              })()}
                             </td>
                             <td className="py-1.5 text-right font-mono text-rose-700">-${((row.quantity || 1) * (row.amount || 0)).toFixed(2)}</td>
                           </tr>
@@ -3326,6 +3474,14 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                 {/* Financial Consolidation & Physical Counts Summary */}
                 {(() => {
                   const sTotals = getSessionTotals(printSession);
+                  const billsData = Object.entries(printSession.billCounts || {})
+                    .map(([denomStr, countValue]) => ({
+                      denom: Number(denomStr),
+                      count: Number(countValue) || 0
+                    }))
+                    .filter(item => item.count > 0)
+                    .sort((a, b) => b.denom - a.denom);
+
                   return (
                     <div className="border-2 border-slate-350 rounded-xl p-4 bg-slate-50/40 grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2 print:border-slate-300">
                       
@@ -3381,10 +3537,55 @@ export const CajaDiariaV2: React.FC<CajaDiariaV2Props> = ({ sales = [], customer
                               <span>Tarjeta (Crédito/Débito) Rendida:</span>
                               <strong className="font-mono">${(printSession.rendicionTarjetas || 0).toFixed(2)}</strong>
                             </p>
-                            <p className="flex justify-between font-bold text-slate-800 print:text-black">
+                            <p className="flex justify-between font-bold text-slate-800 print:text-black pb-1.5 border-b border-slate-150">
                               <span>Total Rendido Informado:</span>
                               <strong className="font-mono text-indigo-700">${sTotals.realRendido.toFixed(2)}</strong>
                             </p>
+                          </div>
+
+                          {/* Banknote breakdown detail */}
+                          <div className="mt-3 text-xs">
+                            <span className="text-[10px] font-black uppercase text-slate-500 block tracking-wider mb-2 print:text-black">
+                              Detalle del Arqueo de Billetes:
+                            </span>
+                            {billsData.length === 0 ? (
+                              <p className="text-[10px] text-slate-400 italic">No se registró detalle de billetes.</p>
+                            ) : (
+                              <div className="w-full overflow-hidden border border-slate-200 rounded-lg bg-white shadow-xs print:border-slate-350">
+                                <table className="w-full text-left border-collapse text-[11px]">
+                                  <thead>
+                                    <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-extrabold print:bg-slate-200 print:text-black border-b border-slate-200">
+                                      <th className="px-3 py-1.5">Denominación</th>
+                                      <th className="px-3 py-1.5 text-center">Cantidad</th>
+                                      <th className="px-3 py-1.5 text-right">Subtotal</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-105 print:divide-slate-300 font-mono">
+                                    {billsData.map(({ denom, count }) => (
+                                      <tr key={denom} className="hover:bg-slate-50/50 text-slate-700 dark:text-slate-300 print:text-black">
+                                        <td className="px-3 py-1.5 font-semibold text-slate-600 print:text-black">
+                                          ${denom.toLocaleString("es-ES")}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-center text-slate-700 print:text-black font-bold">
+                                          {count}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-right font-extrabold text-slate-800 print:text-black">
+                                          ${(count * denom).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    <tr className="bg-slate-50/80 font-bold border-t border-slate-250">
+                                      <td className="px-3 py-1.5 text-slate-700 print:text-black" colSpan={2}>
+                                        Total Arqueado:
+                                      </td>
+                                      <td className="px-3 py-1.5 text-right text-emerald-800 dark:text-emerald-400 print:text-black font-extrabold">
+                                        ${billsData.reduce((acc, curr) => acc + (curr.denom * curr.count), 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
                           </div>
                         </div>
 

@@ -25,13 +25,20 @@ interface WeeklyAuditTabProps {
   stock: StockItem[];
   movements: InventoryMovement[];
   audits: AuditLogEntry[];
-  onSaveAudit: (auditPayload: { responsible: string; note: string; adjustments: any[] }) => Promise<boolean>;
+  onSaveAudit: (auditPayload: { responsible: string; note: string; adjustments: any[]; date?: string }) => Promise<boolean>;
+  onUpdateAudit?: (id: string, date: string, note: string) => Promise<boolean>;
 }
 
-export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements, audits = [], onSaveAudit }) => {
+export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements, audits = [], onSaveAudit, onUpdateAudit }) => {
   const [activeSubTab, setActiveSubTab] = useState<"history" | "new_audit">("history");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSessionOk, setShowSessionOk] = useState(false);
+
+  // State for editing existing audit details
+  const [isEditingAudit, setIsEditingAudit] = useState(false);
+  const [editAuditDate, setEditAuditDate] = useState("");
+  const [editAuditNote, setEditAuditNote] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   
   const getRealResponsible = (name: string) => {
     if (!name || name === "Marcos Inventory") {
@@ -45,6 +52,12 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
     return auth.currentUser?.email || auth.currentUser?.displayName || "btndeportes@gmail.com";
   });
   const [sessionNote, setSessionNote] = useState("Auditoría de Control Físico de Barra");
+  const [sessionDate, setSessionDate] = useState(() => {
+    const now = new Date();
+    const tzOffset = now.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(now.getTime() - tzOffset).toISOString().slice(0, 16);
+    return localISOTime;
+  });
   const [showFilter, setShowFilter] = useState<"all" | "diff">("all");
 
   useEffect(() => {
@@ -58,6 +71,39 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
 
   // Selected audit for detailed view modal
   const [selectedAudit, setSelectedAudit] = useState<AuditLogEntry | null>(null);
+
+  const handleStartEditAudit = () => {
+    if (selectedAudit) {
+      const dateObj = new Date(selectedAudit.date);
+      const tzOffset = dateObj.getTimezoneOffset() * 60000;
+      const localISOTime = new Date(dateObj.getTime() - tzOffset).toISOString().slice(0, 16);
+      setEditAuditDate(localISOTime);
+      setEditAuditNote(selectedAudit.note || "");
+      setIsEditingAudit(true);
+    }
+  };
+
+  const handleSaveAuditEdit = async () => {
+    if (!selectedAudit || !onUpdateAudit) return;
+    setIsSavingEdit(true);
+    try {
+      const success = await onUpdateAudit(selectedAudit.id, editAuditDate, editAuditNote);
+      if (success) {
+        setSelectedAudit({
+          ...selectedAudit,
+          date: new Date(editAuditDate).toISOString(),
+          note: editAuditNote
+        });
+        setIsEditingAudit(false);
+      } else {
+        alert("Ocurrió un error al intentar actualizar la auditoría.");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // Print function inside modal utilizing a beautifully styled new print window (A4 report structure)
   const handlePrintAudit = (audit: AuditLogEntry) => {
@@ -356,6 +402,23 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
               </div>
             </div>
 
+            ${audit.snapshotTotalQty !== undefined ? `
+            <div style="background-color: #ecfdf5; border: 1px solid #10b981; padding: 12px; border-radius: 8px; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; font-size: 9pt;">
+              <div>
+                <div style="font-weight: bold; color: #047857; text-transform: uppercase; font-size: 7.5pt; margin-bottom: 2px;">Artículos en Inventario (Congelado)</div>
+                <div style="font-family: monospace; font-size: 11.5pt; font-weight: 800; color: #065f46;">${audit.snapshotTotalQty.toLocaleString("es-ES")} u. (${audit.snapshotTotalItems || 0} prod.)</div>
+              </div>
+              <div>
+                <div style="font-weight: bold; color: #1e40af; text-transform: uppercase; font-size: 7.5pt; margin-bottom: 2px;">Valoración a Costo (Congelado)</div>
+                <div style="font-family: monospace; font-size: 11.5pt; font-weight: 800; color: #1e3a8a;">$${(audit.snapshotTotalCostValuation || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>
+              <div>
+                <div style="font-weight: bold; color: #92400e; text-transform: uppercase; font-size: 7.5pt; margin-bottom: 2px;">Valoración a Venta (Congelado)</div>
+                <div style="font-family: monospace; font-size: 11.5pt; font-weight: 800; color: #854d0e;">$${(audit.snapshotTotalSalesValuation || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+            ` : ""}
+
             <div class="table-container">
               <table>
                 <thead>
@@ -439,6 +502,11 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
 
   // Setup/Refresh Audit Form
   const startNewAudit = () => {
+    const now = new Date();
+    const tzOffset = now.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(now.getTime() - tzOffset).toISOString().slice(0, 16);
+    setSessionDate(localISOTime);
+
     const activeProducts = stock.filter(p => p.is_active !== false);
     const sortedProducts = [...activeProducts].sort((a, b) => a.name.localeCompare(b.name, "es"));
     const newDraft = sortedProducts.map((p, idx) => {
@@ -506,6 +574,7 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
     const success = await onSaveAudit({
       responsible: sessionResponsible,
       note: sessionNote,
+      date: sessionDate, // custom date selected
       adjustments: draftItems.map((d) => ({
         id: d.id,
         sku: d.sku,
@@ -554,12 +623,20 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
 
   let draftCostImpact = 0;
   let draftSalesImpact = 0;
+  let draftTotalQty = 0;
+  let draftTotalCostValuation = 0;
+  let draftTotalSalesValuation = 0;
+
   draftItems.forEach((d) => {
     const diff = d.difference;
     if (diff !== 0) {
       draftCostImpact += diff * d.valCosto;
       draftSalesImpact += diff * d.valVenta;
     }
+    const realQty = d.real || 0;
+    draftTotalQty += realQty;
+    draftTotalCostValuation += realQty * d.valCosto;
+    draftTotalSalesValuation += realQty * d.valVenta;
   });
 
   return (
@@ -718,17 +795,43 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
                     </h3>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handlePrintAudit(selectedAudit)}
-                      className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer leading-none"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                      </svg>
-                      Imprimir
-                    </button>
+                    {isEditingAudit ? (
+                      <>
+                        <button
+                          onClick={handleSaveAuditEdit}
+                          disabled={isSavingEdit}
+                          className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer leading-none disabled:opacity-50"
+                        >
+                          {isSavingEdit ? "Guardando..." : "Guardar"}
+                        </button>
+                        <button
+                          onClick={() => setIsEditingAudit(false)}
+                          className="py-1.5 px-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer leading-none"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={handleStartEditAudit}
+                          className="py-1.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer leading-none"
+                        >
+                          Editar Fecha/Notas
+                        </button>
+                        <button
+                          onClick={() => handlePrintAudit(selectedAudit)}
+                          className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer leading-none"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                          Imprimir
+                        </button>
+                      </>
+                    )}
                     <button 
-                      onClick={() => setSelectedAudit(null)}
+                      onClick={() => { setSelectedAudit(null); setIsEditingAudit(false); }}
                       className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition"
                     >
                       <X className="w-5 h-5" />
@@ -737,7 +840,7 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
                 </div>
 
                 {/* Audit general details metadata card */}
-                <div className="p-4 bg-slate-50/50 dark:bg-slate-805/30 border-b border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-semibold">
+                <div className="p-4 bg-slate-50/50 dark:bg-slate-850/30 border-b border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-semibold">
                   <div className="flex items-center gap-2">
                     <User className="w-4 h-4 text-slate-400" />
                     <div>
@@ -747,19 +850,74 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-slate-400" />
-                    <div>
+                    <div className="w-full">
                       <p className="text-[10px] text-slate-400 uppercase tracking-wider">FECHA REGISTRO</p>
-                      <p className="font-mono text-slate-900 dark:text-slate-100">
-                        {selectedAudit.date.includes("T") ? new Date(selectedAudit.date).toLocaleDateString("es-ES") + " " + new Date(selectedAudit.date).toLocaleTimeString("es-ES", {hour: "2-digit", minute:"2-digit"}) : selectedAudit.date}
-                      </p>
+                      {isEditingAudit ? (
+                        <input
+                          type="datetime-local"
+                          value={editAuditDate}
+                          onChange={(e) => setEditAuditDate(e.target.value)}
+                          className="mt-0.5 w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:outline-hidden text-slate-800 dark:text-slate-200"
+                        />
+                      ) : (
+                        <p className="font-mono text-slate-900 dark:text-slate-100">
+                          {selectedAudit.date.includes("T") ? new Date(selectedAudit.date).toLocaleDateString("es-ES") + " " + new Date(selectedAudit.date).toLocaleTimeString("es-ES", {hour: "2-digit", minute:"2-digit"}) : selectedAudit.date}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Activity className="w-4 h-4 text-slate-400" />
-                    <div>
+                    <div className="w-full">
                       <p className="text-[10px] text-slate-400 uppercase tracking-wider">NOTAS / OBSERVACIONES</p>
-                      <p className="text-slate-700 dark:text-slate-300 truncate font-bold" title={selectedAudit.note || ""}>
-                        {selectedAudit.note || "Ninguna"}
+                      {isEditingAudit ? (
+                        <input
+                          type="text"
+                          value={editAuditNote}
+                          onChange={(e) => setEditAuditNote(e.target.value)}
+                          className="mt-0.5 w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg focus:outline-hidden text-slate-800 dark:text-slate-200"
+                        />
+                      ) : (
+                        <p className="text-slate-700 dark:text-slate-300 truncate font-bold" title={selectedAudit.note || ""}>
+                          {selectedAudit.note || "Ninguna"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Snapshot/Foto congelada de existencias */}
+                <div className="px-4 py-3 bg-emerald-50/30 dark:bg-emerald-950/10 border-b border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-semibold">
+                  <div className="flex items-center gap-2.5">
+                    <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-450" />
+                    <div>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">Artículos en Inventario (Congelado)</p>
+                      <p className="font-mono font-extrabold text-slate-850 dark:text-slate-100">
+                        {selectedAudit.snapshotTotalQty !== undefined 
+                          ? `${selectedAudit.snapshotTotalQty.toLocaleString("es-ES")} u. (${selectedAudit.snapshotTotalItems || 0} prod.)`
+                          : "N/D (Auditoría anterior)"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <DollarSign className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <div>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">Valoración a Costo (Congelado)</p>
+                      <p className="font-mono font-extrabold text-indigo-700 dark:text-indigo-400">
+                        {selectedAudit.snapshotTotalCostValuation !== undefined 
+                          ? `$${selectedAudit.snapshotTotalCostValuation.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : "N/D (Auditoría anterior)"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <DollarSign className="w-4 h-4 text-amber-650 dark:text-amber-500" />
+                    <div>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">Valoración a Venta (Congelado)</p>
+                      <p className="font-mono font-extrabold text-amber-700 dark:text-amber-400">
+                        {selectedAudit.snapshotTotalSalesValuation !== undefined 
+                          ? `$${selectedAudit.snapshotTotalSalesValuation.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : "N/D (Auditoría anterior)"}
                       </p>
                     </div>
                   </div>
@@ -914,13 +1072,22 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-[#eff4ff] dark:border-slate-800 shadow-md space-y-6 max-w-5xl mx-auto animate-fade-in">
           
           {/* Settings inputs for audit metadata */}
-          <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-[#eff4ff] dark:border-slate-750 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-[#eff4ff] dark:border-slate-750 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Auditor / Responsable</label>
               <input
                 type="text"
                 value={sessionResponsible}
                 onChange={(e) => setSessionResponsible(e.target.value)}
+                className="w-full py-1.5 px-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-hidden"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Fecha y Hora de Auditoría</label>
+              <input
+                type="datetime-local"
+                value={sessionDate}
+                onChange={(e) => setSessionDate(e.target.value)}
                 className="w-full py-1.5 px-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-hidden"
               />
             </div>
@@ -1003,9 +1170,12 @@ export const WeeklyAuditTab: React.FC<WeeklyAuditTabProps> = ({ stock, movements
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:flex md:flex-row gap-x-6 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400 font-bold">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-x-6 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400 font-bold w-full">
               <div>Productos auditados: <strong className="text-slate-800 dark:text-slate-200 font-mono">{draftItems.length}</strong></div>
               <div>Productos ajustados: <strong className="text-amber-600 dark:text-amber-450 font-mono">{draftItems.filter(item => item.difference !== 0).length}</strong></div>
+              <div>Cantidad total proyectada: <strong className="text-emerald-700 dark:text-emerald-400 font-mono">{draftTotalQty.toLocaleString("es-ES")} u.</strong></div>
+              <div>Val. Costo proyectada: <strong className="text-indigo-600 dark:text-indigo-400 font-mono">${draftTotalCostValuation.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div>Val. Venta proyectada: <strong className="text-amber-600 dark:text-amber-500 font-mono">${draftTotalSalesValuation.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
             </div>
           </div>
 

@@ -12,10 +12,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Filter,
-  Check
+  Check,
+  Pencil
 } from "lucide-react";
 import { CustomDropdown } from "./CustomDropdown";
-import { getUnifiedAccounts, getUnifiedSubaccounts, saveUnifiedAccounts, saveUnifiedSubaccounts, Account } from "../lib/accountManager";
+import { getUnifiedAccounts, getUnifiedSubaccounts, saveUnifiedAccounts, saveUnifiedSubaccounts, Account, getAccountLabel, getSubaccountLabel } from "../lib/accountManager";
 
 interface CajaV2Session {
   id: string;
@@ -64,6 +65,7 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
 
   // Form state
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingItem, setEditingItem] = useState<ManualLedgerEntry | null>(null);
   const [newDate, setNewDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [newPeriod, setNewPeriod] = useState("Junio 2026");
   const [newType, setNewType] = useState<"Ingreso" | "Egreso">("Egreso");
@@ -72,6 +74,28 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
   const [newDescription, setNewDescription] = useState("");
   const [newAmount, setNewAmount] = useState<number>(0);
   const [newOrigin, setNewOrigin] = useState("Administrador");
+
+  const handleCancelForm = () => {
+    setShowAddForm(false);
+    setEditingItem(null);
+    setNewAccount("");
+    setNewSubaccount("");
+    setNewDescription("");
+    setNewAmount(0);
+  };
+
+  const handleStartEdit = (item: ManualLedgerEntry) => {
+    setEditingItem(item);
+    setNewDate(item.date);
+    setNewPeriod(item.periodoImputado);
+    setNewOrigin(item.origin);
+    setNewType(item.type);
+    setNewAccount(item.account);
+    setNewSubaccount(item.subaccount);
+    setNewDescription(item.description);
+    setNewAmount(item.type === "Ingreso" ? item.debe : item.haber);
+    setShowAddForm(true);
+  };
 
   // Load data
   const loadData = useCallback(async () => {
@@ -170,7 +194,7 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
     }
   };
 
-  // Add manual entry
+  // Add or Edit manual entry
   const handleAddManualEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccount || !newSubaccount || newAmount <= 0) {
@@ -178,7 +202,7 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
       return;
     }
 
-    const newDoc: Partial<ManualLedgerEntry> = {
+    const docPayload: Partial<ManualLedgerEntry> = {
       date: newDate,
       periodoImputado: newPeriod,
       origin: newOrigin || "Administrador",
@@ -192,22 +216,34 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
     };
 
     try {
-      const res = await apiFetch("/api/ledger-manual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newDoc)
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setManualEntries(prev => [...prev, saved]);
-        setShowAddForm(false);
-        // Clear fields
-        setNewAccount("");
-        setNewSubaccount("");
-        setNewDescription("");
-        setNewAmount(0);
+      if (editingItem) {
+        // Edit mode (PUT)
+        const res = await apiFetch(`/api/ledger-manual/${editingItem.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(docPayload)
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          setManualEntries(prev => prev.map(m => m.id === editingItem.id ? saved : m));
+          handleCancelForm();
+        } else {
+          alert("Error actualizando el movimiento.");
+        }
       } else {
-        alert("Error guardando el movimiento.");
+        // Create mode (POST)
+        const res = await apiFetch("/api/ledger-manual", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(docPayload)
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          setManualEntries(prev => [...prev, saved]);
+          handleCancelForm();
+        } else {
+          alert("Error guardando el movimiento.");
+        }
       }
     } catch (e) {
       console.error(e);
@@ -339,6 +375,7 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
       // Manual Otros Ingresos
       if (Array.isArray(box.otrosIngresos)) {
         box.otrosIngresos.forEach(item => {
+          if (item.id === "buffet") return;
           if (item.amount > 0) {
             const matchedAcc = masterAccounts.find(a => a.id === item.accountId);
             const accountLabel = matchedAcc ? matchedAcc.label : (item.account || "Otros Ingresos");
@@ -444,6 +481,7 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
 
       if (Array.isArray(box.otrosIngresos)) {
         box.otrosIngresos.forEach(item => {
+          if (item.id === "buffet") return;
           const hasAccountAndSubaccount = item.accountId && item.subaccountId;
           // If it doesn't have an explicit period AND it's missing category, it's pending.
           if (item.amount > 0 && !item.periodoImputado && !hasAccountAndSubaccount) {
@@ -603,8 +641,8 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
                       {item.source}
                     </td>
                     <td className="p-2.5">
-                      <span className="font-bold text-slate-800">{item.account}</span>
-                      <span className="block text-[9px] text-slate-400 capitalize">{item.subaccount}</span>
+                      <span className="font-bold text-slate-800">{getAccountLabel(item.account)}</span>
+                      <span className="block text-[9px] text-slate-400 capitalize">{getSubaccountLabel(item.account, item.subaccount)}</span>
                     </td>
                     <td className="p-2.5 text-slate-600 truncate max-w-[160px]" title={item.description}>
                       {item.description}
@@ -670,8 +708,10 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
         {showAddForm && (
           <form onSubmit={handleAddManualEntry} className="bg-slate-55 bg-indigo-50/20 border border-indigo-100 rounded-xl p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-4 border-b border-indigo-100/50 pb-2 mb-1 flex justify-between items-center">
-              <h4 className="text-[11px] font-black uppercase text-indigo-900 tracking-wider">Crear Movimiento Administrativo Manual</h4>
-              <button type="button" onClick={() => setShowAddForm(false)} className="text-slate-400 hover:text-slate-600 text-xs">Cerrar</button>
+              <h4 className="text-[11px] font-black uppercase text-indigo-900 tracking-wider">
+                {editingItem ? "Editar Movimiento Administrativo Manual" : "Crear Movimiento Administrativo Manual"}
+              </h4>
+              <button type="button" onClick={handleCancelForm} className="text-slate-400 hover:text-slate-600 text-xs">Cerrar</button>
             </div>
             
             <div className="space-y-1">
@@ -803,7 +843,7 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
             <div className="md:col-span-4 text-right pt-2 border-t border-indigo-100/30 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setShowAddForm(false)}
+                onClick={handleCancelForm}
                 className="px-4 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold"
               >
                 Cancelar
@@ -812,7 +852,7 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
                 type="submit"
                 className="px-5 py-1.5 bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs hover:bg-indigo-850"
               >
-                Guardar en Libro
+                {editingItem ? "Guardar Cambios" : "Guardar en Libro"}
               </button>
             </div>
           </form>
@@ -907,8 +947,8 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
                         <span className="text-slate-700 italic block leading-none">{item.origin}</span>
                       </td>
                       <td className="p-3">
-                        <span className="font-bold text-slate-900 block leading-tight">{item.account}</span>
-                        <span className="text-slate-400 text-[9px] capitalize">{item.subaccount}</span>
+                        <span className="font-bold text-slate-900 block leading-tight">{getAccountLabel(item.account)}</span>
+                        <span className="text-slate-400 text-[9px] capitalize">{getSubaccountLabel(item.account, item.subaccount)}</span>
                       </td>
                       <td className="p-3 text-slate-500 max-w-[180px] truncate" title={item.description}>
                         {item.description || "-"}
@@ -923,15 +963,24 @@ export const LibroGestion: React.FC<LibroGestionProps> = ({ sales, apiFetch }) =
                         ${(item as any).saldo?.toLocaleString("es-ES", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="p-3 text-center print:hidden">
-                        <div className="flex justify-center items-center gap-1">
+                        <div className="flex justify-center items-center gap-1.5">
                           {isManual ? (
-                            <button
-                              onClick={() => handleDeleteManualEntry(item.id)}
-                              className="p-1 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded transition"
-                              title="Eliminar asiento manual"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleStartEdit(item)}
+                                className="p-1 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-800 rounded transition cursor-pointer"
+                                title="Editar asiento manual"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteManualEntry(item.id)}
+                                className="p-1 hover:bg-rose-50 text-rose-500 hover:text-rose-700 rounded transition cursor-pointer"
+                                title="Eliminar asiento manual"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           ) : (
                             <span className="text-[9px] tracking-wider uppercase font-black p-0.5 bg-slate-100 text-slate-400 rounded px-1" title="Generado automáticamente por cierre de caja">
                               Auto

@@ -22,7 +22,9 @@ import {
   getUnifiedAccounts, 
   getUnifiedSubaccounts, 
   Account, 
-  Subaccount 
+  Subaccount,
+  getAccountLabel,
+  getSubaccountLabel
 } from "../lib/accountManager";
 
 interface ClasificacionHistoricaProps {
@@ -945,7 +947,7 @@ export const ClasificacionHistorica: React.FC<ClasificacionHistoricaProps> = ({ 
                       {/* Cuenta */}
                       <td className="p-4">
                         {item.account ? (
-                          <span className="text-xs font-bold text-slate-600">{item.account}</span>
+                          <span className="text-xs font-bold text-slate-600">{getAccountLabel(item.account)}</span>
                         ) : (
                           <span className="text-xs text-slate-400 italic font-medium">No Asignada</span>
                         )}
@@ -954,7 +956,7 @@ export const ClasificacionHistorica: React.FC<ClasificacionHistoricaProps> = ({ 
                       {/* Subcuenta */}
                       <td className="p-4">
                         {item.subaccount ? (
-                          <span className="text-xs font-bold text-slate-600">{item.subaccount}</span>
+                          <span className="text-xs font-bold text-slate-600">{getSubaccountLabel(item.account, item.subaccount)}</span>
                         ) : (
                           <span className="text-xs text-slate-400 italic font-medium">No Asignada</span>
                         )}

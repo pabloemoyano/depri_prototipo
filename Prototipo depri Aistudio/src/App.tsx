@@ -42,6 +42,7 @@ import { EventsTab } from "./components/EventsTab";
 import { DeactivatedTab } from "./components/DeactivatedTab";
 import { LoginScreen } from "./components/LoginScreen";
 import { ReportsTab } from "./components/ReportsTab";
+import { MapaArquitectura } from "./components/MapaArquitectura";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -523,11 +524,17 @@ export default function App() {
         setSales((prev) => [resJSON.transaction, ...prev]);
         
         // Re-fetch fresh stock values to keep live dashboard synced after stock subtractions
-        const updateStockRes = await apiFetch("/api/stock");
-        if (updateStockRes.ok) {
-          const freshStock = await updateStockRes.json();
-          setStock(freshStock);
-        }
+        // OPTIMISTIC UPDATE: Update local stock state immediately to reduce server quota pressure
+        setStock(prevStock => {
+          const newStock = [...prevStock];
+          saleData.items.forEach(saleItem => {
+            const stockIndex = newStock.findIndex(s => s.id === saleItem.stock_item_id);
+            if (stockIndex !== -1) {
+              newStock[stockIndex] = { ...newStock[stockIndex], quantity: newStock[stockIndex].quantity - saleItem.quantity };
+            }
+          });
+          return newStock;
+        });
         const updateMovementsRes = await apiFetch("/api/inventory-movements");
         if (updateMovementsRes.ok) {
            const newMovements = await updateMovementsRes.json();
@@ -604,7 +611,7 @@ export default function App() {
   };
 
   // Save audit session dynamically via backend endpoint
-  const handleSaveAudit = async (auditPayload: { responsible: string; note: string; adjustments: any[] }): Promise<boolean> => {
+  const handleSaveAudit = async (auditPayload: { responsible: string; note: string; adjustments: any[]; date?: string }): Promise<boolean> => {
     try {
       const response = await apiFetch("/api/audits", {
         method: "POST",
@@ -627,6 +634,29 @@ export default function App() {
       return true;
     } catch (err) {
       console.error("handleSaveAudit failing:", err);
+      return false;
+    }
+  };
+
+  const handleUpdateAudit = async (id: string, date: string, note: string): Promise<boolean> => {
+    try {
+      const response = await apiFetch(`/api/audits/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ date, note })
+      });
+      if (!response.ok) throw new Error("Error actualizando auditoría.");
+      
+      const freshMovesRes = await apiFetch("/api/inventory-movements");
+      const freshMoves = await freshMovesRes.json();
+      setMovements(freshMoves || []);
+
+      const freshAuditsRes = await apiFetch("/api/audits");
+      const freshAudits = await freshAuditsRes.json();
+      setAudits(freshAudits || []);
+
+      return true;
+    } catch (err) {
+      console.error("handleUpdateAudit failing:", err);
       return false;
     }
   };
@@ -1073,6 +1103,7 @@ export default function App() {
                         setActiveTab(tab);
                         window.scrollTo({ top: 0, behavior: "smooth" });
                       }}
+                      apiFetch={apiFetch}
                     />
                   )}
 
@@ -1149,6 +1180,7 @@ export default function App() {
                       movements={movements}
                       audits={audits}
                       onSaveAudit={handleSaveAudit}
+                      onUpdateAudit={handleUpdateAudit}
                     />
                   )}
 
@@ -1198,6 +1230,31 @@ export default function App() {
                     />
                   )}
 
+                  {activeTab === "sales_future" && (
+                    <div className="bg-white border border-slate-100 rounded-3xl p-12 text-center space-y-6 max-w-2xl mx-auto shadow-2xs my-8 animate-fade-in text-left">
+                      <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                        <Clock className="w-10 h-10 animate-pulse" />
+                      </div>
+                      <div className="space-y-2 text-center">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full inline-block">Próximamente / En Desarrollo</span>
+                        <h2 className="text-xl font-black text-slate-800 tracking-tight">Módulo de Turnos y Servicios</h2>
+                        <p className="text-xs text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
+                          Estamos diseñando una herramienta integral para la reserva de canchas en tiempo real, control de calendarios interactivos, facturación integrada de abonos y automatización de notificaciones para los clientes.
+                        </p>
+                      </div>
+                      <div className="pt-6 border-t border-slate-100 flex justify-center gap-6 text-xs text-slate-400 font-bold font-mono">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
+                          Planificación de Canchas
+                        </span>
+                        <span>•</span>
+                        <span>Abonos Recurrentes</span>
+                        <span>•</span>
+                        <span>Notificaciones SMS/WA</span>
+                      </div>
+                    </div>
+                  )}
+
                   {activeTab === "deactivated" && (
                     <DeactivatedTab 
                       stock={stock}
@@ -1207,6 +1264,10 @@ export default function App() {
                       onEditCustomer={handleEditCustomer}
                       onEditProvider={handleEditProvider}
                     />
+                  )}
+
+                  {activeTab === "mapa_arquitectura" && (
+                    <MapaArquitectura apiFetch={apiFetch} />
                   )}
 
                   {(activeTab === "reports_buffet" || activeTab === "reports_turnos") && (
